@@ -1,0 +1,37 @@
+{
+  "name": "ama-and-nurse-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:https": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.9",
+    "vite-plugin-pwa": "^1.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "workbox-window": "^7.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "eslint": "^9.37.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.4.0",
+    "jsdom": "^27.0.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.1",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
