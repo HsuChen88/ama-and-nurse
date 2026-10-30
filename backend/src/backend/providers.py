@@ -1,10 +1,24 @@
 import io
+import logging
 import math
 import struct
+import time
 import wave
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from html import unescape
+from pathlib import Path
+from typing import Any
+
+import httpx
+from google.api_core.exceptions import InvalidArgument
+from google.cloud import texttospeech, translate_v3
+from google.oauth2 import service_account
 
 from backend.config import Settings
+from backend.errors import ProviderError
+
+logger = logging.getLogger(__name__)
 
 
 class AsrProvider(ABC):
@@ -65,21 +79,240 @@ class MockTtsProvider(TtsProvider):
         return buffer.getvalue(), "audio/wav"
 
 
-def _mock_only(provider_name: str, kind: str) -> None:
-    if provider_name != "mock":
-        raise ValueError(f"Unsupported {kind} provider: {provider_name}")
+class RemoteAsrProvider(AsrProvider):
+    def __init__(self, client: httpx.Client):
+        self.client = client
+
+    def transcribe(self, wav_bytes: bytes, lang: str) -> str:
+        started = time.perf_counter()
+        try:
+            response = self.client.post(
+                "/v1/asr",
+                data={"language": lang},
+                files={"audio": ("audio.wav", wav_bytes, "audio/wav")},
+            )
+        except httpx.TimeoutException as exc:
+            logger.warning("Remote ASR timed out elapsed_ms=%d", _elapsed_ms(started))
+            raise ProviderError("Remote ASR timed out") from exc
+        except httpx.RequestError as exc:
+            logger.warning(
+                "Remote ASR connection failed elapsed_ms=%d", _elapsed_ms(started)
+            )
+            raise ProviderError("Remote ASR connection failed") from exc
+
+        elapsed_ms = _elapsed_ms(started)
+        if not response.is_success:
+            logger.warning(
+                "Remote ASR failed status_code=%d elapsed_ms=%d",
+                response.status_code,
+                elapsed_ms,
+            )
+            raise ProviderError(f"Remote ASR returned HTTP {response.status_code}")
+
+        try:
+            text = response.json()["text"]
+            if not isinstance(text, str):
+                raise TypeError
+        except (ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "Remote ASR returned invalid response status_code=%d elapsed_ms=%d",
+                response.status_code,
+                elapsed_ms,
+            )
+            raise ProviderError("Remote ASR returned an invalid response") from exc
+
+        logger.info(
+            "Remote ASR completed status_code=%d elapsed_ms=%d",
+            response.status_code,
+            elapsed_ms,
+        )
+        return text
+
+
+class GoogleTranslateProvider(TranslateProvider):
+    def __init__(self, client: Any, project_id: str):
+        self.client = client
+        self.parent = f"projects/{project_id}/locations/global"
+
+    def translate(self, text: str, source: str, target: str) -> str:
+        response = self.client.translate_text(
+            request={
+                "parent": self.parent,
+                "contents": [text],
+                "source_language_code": source,
+                "target_language_code": target,
+                "mime_type": "text/plain",
+            }
+        )
+        return unescape(response.translations[0].translated_text)
+
+
+class GoogleTtsProvider(TtsProvider):
+    def __init__(self, client: Any, voice_name: str, speaking_rate: float):
+        self.client = client
+        self.voice_name = voice_name
+        self.speaking_rate = speaking_rate
+
+    def synthesize(self, text: str, lang: str) -> tuple[bytes, str]:
+        del lang
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+        voice = texttospeech.VoiceSelectionParams(
+            language_code="id-ID", name=self.voice_name
+        )
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=self.speaking_rate,
+        )
+        try:
+            response = self.client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=audio_config,
+            )
+        except InvalidArgument:
+            logger.warning(
+                "Google TTS voice rejected speaking rate; retrying without rate voice=%s",
+                self.voice_name,
+            )
+            response = self.client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=texttospeech.AudioConfig(
+                    audio_encoding=texttospeech.AudioEncoding.MP3
+                ),
+            )
+        return response.audio_content, "audio/mpeg"
+
+
+@dataclass(slots=True)
+class ProviderBundle:
+    asr: dict[str, AsrProvider]
+    translate: TranslateProvider
+    tts: dict[str, TtsProvider]
+    resources: tuple[Any, ...] = ()
+
+    def close(self) -> None:
+        _close_resources(self.resources)
 
 
 def build_providers(
     settings: Settings,
-) -> tuple[dict[str, AsrProvider], TranslateProvider, dict[str, TtsProvider]]:
-    _mock_only(settings.asr_nan_provider, "ASR nan-TW")
-    _mock_only(settings.asr_id_provider, "ASR id")
-    _mock_only(settings.translate_provider, "translate")
-    _mock_only(settings.tts_id_provider, "TTS id")
-    _mock_only(settings.tts_nan_provider, "TTS nan-TW")
-    return (
-        {"nan-TW": MockAsrProvider(), "id": MockAsrProvider()},
-        MockTranslateProvider(),
-        {"id": MockTtsProvider(), "nan-TW": MockTtsProvider()},
+) -> ProviderBundle:
+    resources: list[Any] = []
+    try:
+        remote_client = _build_remote_client(settings, resources)
+        asr = {
+            "nan-TW": _build_asr(
+                settings.asr_nan_provider, remote_client, "nan-TW"
+            ),
+            "id": _build_asr(settings.asr_id_provider, remote_client, "id"),
+        }
+        translate = _build_translate(settings, resources)
+        tts = {
+            "id": _build_id_tts(settings, resources),
+            "nan-TW": _build_nan_tts(settings.tts_nan_provider),
+        }
+        return ProviderBundle(asr, translate, tts, tuple(resources))
+    except Exception:
+        _close_resources(resources)
+        raise
+
+
+def _build_remote_client(settings: Settings, resources: list[Any]) -> httpx.Client | None:
+    if "remote" not in {settings.asr_nan_provider, settings.asr_id_provider}:
+        return None
+    base_url = _required(settings.inference_base_url, "INFERENCE_BASE_URL", "remote ASR")
+    token = _required_secret(
+        settings.inference_api_token, "INFERENCE_API_TOKEN", "remote ASR"
     )
+    headers = {"Authorization": f"Bearer {token}"}
+    if settings.inference_cf_access_client_id:
+        headers["CF-Access-Client-Id"] = settings.inference_cf_access_client_id
+    if settings.inference_cf_access_client_secret:
+        headers["CF-Access-Client-Secret"] = (
+            settings.inference_cf_access_client_secret.get_secret_value()
+        )
+    client = httpx.Client(
+        base_url=base_url.rstrip("/"),
+        headers=headers,
+        timeout=settings.inference_timeout_seconds,
+    )
+    resources.append(client)
+    return client
+
+
+def _build_asr(
+    provider_name: str, remote_client: httpx.Client | None, language: str
+) -> AsrProvider:
+    if provider_name == "mock":
+        return MockAsrProvider()
+    if provider_name == "remote" and remote_client is not None:
+        return RemoteAsrProvider(remote_client)
+    raise ValueError(f"Unsupported ASR {language} provider: {provider_name}")
+
+
+def _build_translate(settings: Settings, resources: list[Any]) -> TranslateProvider:
+    if settings.translate_provider == "mock":
+        return MockTranslateProvider()
+    if settings.translate_provider != "google":
+        raise ValueError(f"Unsupported translate provider: {settings.translate_provider}")
+    path = _credentials_path(
+        settings.google_translate_credentials,
+        "GOOGLE_TRANSLATE_CREDENTIALS",
+        "Google Translation",
+    )
+    credentials = service_account.Credentials.from_service_account_file(path)
+    if not credentials.project_id:
+        raise ValueError("Google Translation credentials do not contain a project_id")
+    client = translate_v3.TranslationServiceClient(credentials=credentials)
+    resources.append(client)
+    return GoogleTranslateProvider(client, credentials.project_id)
+
+
+def _build_id_tts(settings: Settings, resources: list[Any]) -> TtsProvider:
+    if settings.tts_id_provider == "mock":
+        return MockTtsProvider()
+    if settings.tts_id_provider != "google":
+        raise ValueError(f"Unsupported TTS id provider: {settings.tts_id_provider}")
+    path = _credentials_path(
+        settings.google_tts_credentials, "GOOGLE_TTS_CREDENTIALS", "Google TTS"
+    )
+    credentials = service_account.Credentials.from_service_account_file(path)
+    client = texttospeech.TextToSpeechClient(credentials=credentials)
+    resources.append(client)
+    return GoogleTtsProvider(
+        client, settings.tts_id_voice, settings.tts_id_speaking_rate
+    )
+
+
+def _build_nan_tts(provider_name: str) -> TtsProvider:
+    if provider_name == "mock":
+        return MockTtsProvider()
+    raise ValueError(f"Unsupported TTS nan-TW provider: {provider_name}")
+
+
+def _required(value: str | None, variable: str, mode: str) -> str:
+    if not value:
+        raise ValueError(f"{variable} is required for {mode}")
+    return value
+
+
+def _required_secret(value: Any, variable: str, mode: str) -> str:
+    if value is None or not value.get_secret_value():
+        raise ValueError(f"{variable} is required for {mode}")
+    return value.get_secret_value()
+
+
+def _credentials_path(value: str | None, variable: str, mode: str) -> str:
+    return str(Path(_required(value, variable, mode)).expanduser())
+
+
+def _close_resources(resources: tuple[Any, ...] | list[Any]) -> None:
+    for resource in reversed(resources):
+        close = getattr(resource, "close", None)
+        if callable(close):
+            close()
+
+
+def _elapsed_ms(started: float) -> int:
+    return round((time.perf_counter() - started) * 1000)

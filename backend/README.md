@@ -1,8 +1,8 @@
-# Backend mock API
+# Backend API
 
-Phase 1 FastAPI backend for the Taiwanese Hokkien ↔ Indonesian translation PWA.
-The current providers are deterministic mocks; their interfaces are ready to be
-replaced by real ASR, translation, and TTS providers in later phases.
+FastAPI backend for the Taiwanese Hokkien ↔ Indonesian translation PWA. It can
+use deterministic mock providers for local development or remote/Google Cloud
+providers for the Phase 2 translation pipeline.
 
 ## Requirements
 
@@ -29,13 +29,54 @@ uv run pytest
 
 The integration tests invoke the system FFmpeg and ffprobe executables.
 
-## Configuration
+## Provider configuration
 
-All provider selectors currently accept only `mock`:
+Mock mode is the default and requires no credentials:
 
-- `ASR_NAN_PROVIDER`, `ASR_ID_PROVIDER`
-- `TRANSLATE_PROVIDER`
-- `TTS_ID_PROVIDER`, `TTS_NAN_PROVIDER`
+- `ASR_NAN_PROVIDER`, `ASR_ID_PROVIDER`: `mock` or `remote`
+- `TRANSLATE_PROVIDER`: `mock` or `google`
+- `TTS_ID_PROVIDER`: `mock` or `google`
+- `TTS_NAN_PROVIDER`: `mock` only; Taiwanese Hokkien TTS remains undecided
+
+To run the real Phase 2 path, set:
+
+```dotenv
+ASR_NAN_PROVIDER=remote
+ASR_ID_PROVIDER=remote
+TRANSLATE_PROVIDER=google
+TTS_ID_PROVIDER=google
+TTS_NAN_PROVIDER=mock
+```
+
+### Remote ASR
+
+- `INFERENCE_BASE_URL`: inference service base URL
+- `INFERENCE_API_TOKEN`: required Bearer token
+- `INFERENCE_CF_ACCESS_CLIENT_ID`, `INFERENCE_CF_ACCESS_CLIENT_SECRET`: optional
+  Cloudflare Access service-token headers
+- `INFERENCE_TIMEOUT_SECONDS`: request timeout, default `120`
+
+The backend reuses one HTTP client for both ASR languages. The API token and
+recognized text are not written to logs.
+
+### Google Cloud Translation and TTS
+
+- `GOOGLE_TRANSLATE_CREDENTIALS`: Translation service-account JSON path
+- `GOOGLE_TTS_CREDENTIALS`: TTS service-account JSON path
+- `TTS_ID_VOICE`: defaults to the Indonesian female voice
+  `id-ID-Chirp3-HD-Pulcherrima`
+- `TTS_ID_SPEAKING_RATE`: defaults to `0.9`
+
+Translation uses Cloud Translation v3 at `global` and reads the project ID from
+the Translation service-account credentials. TTS returns MP3 (`audio/mpeg`). If
+the configured voice rejects speaking-rate control, synthesis is retried once at
+the voice's default rate.
+
+Do not commit service-account JSON or tokens. The example paths under
+`~/.config/ama-and-nurse/` are outside this repository.
+
+### General settings
+
 - `AUDIO_TTL_SECONDS` (default: `3600`)
 - `CORS_ORIGINS` (default: `http://localhost:5173`)
 - `FFMPEG_BINARY`, `FFPROBE_BINARY`

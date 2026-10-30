@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -20,17 +21,25 @@ logger = logging.getLogger(__name__)
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    asr, translate, tts = build_providers(settings)
+    providers = build_providers(settings)
     store = AudioStore(settings.audio_ttl_seconds)
     pipeline = TranslationPipeline(
         AudioPreprocessor(settings.ffmpeg_binary, settings.ffprobe_binary),
-        asr,
-        translate,
-        tts,
+        providers.asr,
+        providers.translate,
+        providers.tts,
         store,
     )
 
-    app = FastAPI(title="Ama's Translator API", version="1.0.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        del app
+        yield
+        providers.close()
+
+    app = FastAPI(
+        title="Ama's Translator API", version="1.0.0", lifespan=lifespan
+    )
     app.state.pipeline = pipeline
     app.state.audio_store = store
     app.state.settings = settings

@@ -81,6 +81,8 @@ class TranslationPipeline:
             tts_ms = _elapsed_ms(start)
         except ApiError:
             raise
+        except ProviderError:
+            raise
         except Exception as exc:
             raise ProviderError from exc
 
