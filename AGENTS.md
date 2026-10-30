@@ -18,6 +18,7 @@
 ```
 frontend/   React + Vite + TypeScript + PWA（pnpm）
 backend/    Python 3.12 + FastAPI（uv 管理）
+inference/  自架模型推論服務，Python 3.12 + FastAPI（uv 管理），契約見 docs/inference-contract.md
 docs/       規劃、API 契約、調研報告
 deploy/     docker compose、cloudflared 設定
 ```

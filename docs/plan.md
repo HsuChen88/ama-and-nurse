@@ -20,3 +20,5 @@
 | 2026-10-31 | 對外存取使用 Cloudflare Tunnel + Cloudflare Access 限定家人。 |
 | 2026-10-31 | 台語 TTS 先調研再決定，不讓開發進度依賴 BreezyVoice 26。 |
 | 2026-10-31 | 不做自動語者偵測、連續收音、串流；按一下開始、按一下結束。 |
+| 2026-10-31 | 自架模型推論獨立為 `inference/` 服務（契約見 `docs/inference-contract.md`）：測試期 Mac CPU，正式部署遠端 GPU server，backend 經 Cloudflare Tunnel + Access service token + Bearer token 呼叫。ASR 測試期延遲 5–15 秒可接受。 |
+| 2026-10-31 | Phase 3 優先評估在自有 GPU server 部署 Breeze ASR 26 與 BreezyVoice；台語 TTS 模型可用性待確認（BreezyVoice 26 權重未公開，舊版 BreezyVoice 僅華語）。 |
