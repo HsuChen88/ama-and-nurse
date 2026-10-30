@@ -65,6 +65,7 @@ recognized text are not written to logs.
 - `GOOGLE_TTS_CREDENTIALS`: TTS service-account JSON path
 - `GOOGLE_TIMEOUT_SECONDS`: per-request timeout, default `15`
 - `TRANSLATION_GLOSSARY`: glossary JSON path, defaults to `glossary.json`
+- `PROVIDER_WARMUP`: warm Google providers during app startup, default `true`
 - `TTS_ID_VOICE`: defaults to the Indonesian female voice
   `id-ID-Chirp3-HD-Pulcherrima`
 - `TTS_ID_SPEAKING_RATE`: defaults to `0.9`
@@ -73,6 +74,12 @@ Translation uses Cloud Translation v3 at `global` and reads the project ID from
 the Translation service-account credentials. TTS returns MP3 (`audio/mpeg`). If
 the configured voice rejects speaking-rate control, synthesis is retried once at
 the voice's default rate.
+
+When `PROVIDER_WARMUP=true`, application startup translates `Hai` and synthesizes
+the same short Indonesian word once to avoid first-request cold-start latency.
+Each warm-up failure is logged as a warning and does not prevent startup. Mock
+providers are never warmed. Set it to `false` in tests or environments where the
+startup API calls are not desired.
 
 #### Translation glossary
 

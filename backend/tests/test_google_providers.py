@@ -99,6 +99,28 @@ def test_google_tts_retries_without_rate_when_voice_rejects_it():
     assert client.calls[1][3] == 15
 
 
+def test_google_translate_warmup_uses_short_indonesian_text():
+    client = FakeTranslateClient()
+    provider = GoogleTranslateProvider(client, "project")
+
+    provider.warm_up()
+
+    assert client.request["contents"] == ["Hai"]
+    assert client.request["source_language_code"] == "id"
+    assert client.request["target_language_code"] == "zh-TW"
+
+
+def test_google_tts_warmup_uses_short_indonesian_text():
+    client = FakeTtsClient()
+    provider = GoogleTtsProvider(
+        client, "id-ID-Chirp3-HD-Pulcherrima", speaking_rate=0.9
+    )
+
+    provider.warm_up()
+
+    assert client.calls[0][0].text == "Hai"
+
+
 @pytest.mark.parametrize(
     "error", [DeadlineExceeded("timeout"), ServiceUnavailable("down")]
 )

@@ -161,6 +161,9 @@ class GoogleTranslateProvider(TranslateProvider):
             response.translations[0].translated_text, target=target
         )
 
+    def warm_up(self) -> None:
+        self.translate("Hai", source="id", target="zh-TW")
+
 
 class GoogleTtsProvider(TtsProvider):
     def __init__(
@@ -212,6 +215,9 @@ class GoogleTtsProvider(TtsProvider):
             raise ProviderError("Google TTS request failed") from exc
         return response.audio_content, "audio/mpeg"
 
+    def warm_up(self) -> None:
+        self.synthesize("Hai", lang="id")
+
 
 @dataclass(slots=True)
 class ProviderBundle:
@@ -219,6 +225,32 @@ class ProviderBundle:
     translate: TranslateProvider
     tts: dict[str, TtsProvider]
     resources: tuple[Any, ...] = ()
+
+    def warm_up(self) -> None:
+        providers = (
+            ("translate", self.translate),
+            ("tts_id", self.tts.get("id")),
+        )
+        for provider_name, provider in providers:
+            warm_up = getattr(provider, "warm_up", None)
+            if not callable(warm_up):
+                continue
+            started = time.perf_counter()
+            try:
+                warm_up()
+            except Exception as exc:
+                logger.warning(
+                    "Provider warm-up failed provider=%s error=%s elapsed_ms=%d",
+                    provider_name,
+                    type(exc).__name__,
+                    _elapsed_ms(started),
+                )
+            else:
+                logger.info(
+                    "Provider warm-up completed provider=%s elapsed_ms=%d",
+                    provider_name,
+                    _elapsed_ms(started),
+                )
 
     def close(self) -> None:
         _close_resources(self.resources)

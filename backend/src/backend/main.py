@@ -34,8 +34,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         del app
-        yield
-        providers.close()
+        if settings.provider_warmup:
+            await run_in_threadpool(providers.warm_up)
+        try:
+            yield
+        finally:
+            providers.close()
 
     app = FastAPI(
         title="Ama's Translator API", version="1.0.0", lifespan=lifespan
