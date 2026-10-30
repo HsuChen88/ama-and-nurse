@@ -1,0 +1,34 @@
+services:
+  inference:
+    build:
+      context: ../../inference
+    restart: unless-stopped
+    environment:
+      INFERENCE_API_TOKEN: ${INFERENCE_API_TOKEN:?set INFERENCE_API_TOKEN}
+      INFERENCE_DEVICE: cuda
+      INFERENCE_COMPUTE_TYPE: ${INFERENCE_COMPUTE_TYPE:-float16}
+      INFERENCE_PRELOAD: ${INFERENCE_PRELOAD:-nan-TW,id}
+      INFERENCE_MAX_QUEUE: ${INFERENCE_MAX_QUEUE:-4}
+      ASR_NAN_MODEL: ${ASR_NAN_MODEL:-weemed/Breeze-ASR-26-ct2}
+      ASR_ID_MODEL: ${ASR_ID_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - inference
+
+volumes:
+  huggingface-cache:
