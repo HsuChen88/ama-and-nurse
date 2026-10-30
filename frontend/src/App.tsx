@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { ApiError, resolveAudioUrl, translateAudio } from './api/client'
+import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
 import { appReducer, initialState } from './state/machine'
@@ -25,6 +26,7 @@ function App() {
   const [isStarting, setIsStarting] = useState(false)
   const recorderRef = useRef(new AudioRecorder())
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
   const stoppingRef = useRef(false)
 
@@ -32,19 +34,15 @@ function App() {
   const busy = isStarting || ['uploading', 'playing'].includes(state.status)
 
   const playAudio = useCallback(async (conversation: Conversation, isAutomatic = false) => {
-    audioRef.current?.pause()
-    const audio = new Audio(resolveAudioUrl(conversation.audio_url))
-    audio.preload = 'auto'
-    audioRef.current = audio
-    audio.addEventListener('ended', () => dispatch({ type: 'PLAYBACK_ENDED' }), { once: true })
-    audio.addEventListener(
-      'error',
-      () => dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' }),
-      { once: true },
-    )
+    const audio = audioRef.current
+    if (!audio) {
+      dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
+      return
+    }
 
+    isResultAudioRef.current = true
     try {
-      await audio.play()
+      await playOnAudioElement(audio, resolveAudioUrl(conversation.audio_url))
     } catch {
       if (isAutomatic) dispatch({ type: 'AUTOPLAY_BLOCKED' })
       else dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
@@ -93,6 +91,11 @@ function App() {
 
   const handleSpeaker = (speaker: Speaker) => {
     if (state.status === 'recording' && state.activeSpeaker === speaker) {
+      const audio = audioRef.current
+      if (audio) {
+        isResultAudioRef.current = false
+        unlockAudioElement(audio)
+      }
       void stopRecording()
       return
     }
@@ -128,6 +131,15 @@ function App() {
 
   return (
     <main className="app-shell">
+      <audio
+        ref={audioRef}
+        preload="auto"
+        hidden
+        onEnded={() => dispatch({ type: 'PLAYBACK_ENDED' })}
+        onError={() => {
+          if (isResultAudioRef.current) dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
+        }}
+      />
       <header className="app-header">
         <div className="brand-mark" aria-hidden="true">譯</div>
         <div>
