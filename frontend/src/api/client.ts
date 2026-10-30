@@ -2,6 +2,7 @@ import type { ApiErrorBody, Speaker, TranslationResult } from '../types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+const UPLOAD_TIMEOUT_MS = 45_000
 
 export class ApiError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -20,14 +21,19 @@ export async function translateAudio(
   formData.append('audio', audio, filename)
   formData.append('speaker', speaker)
 
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS)
   let response: Response
   try {
     response = await fetch(`${API_BASE}/api/translate`, {
       method: 'POST',
       body: formData,
+      signal: controller.signal,
     })
   } catch {
     throw new ApiError('NETWORK_ERROR', 'Unable to reach server')
+  } finally {
+    window.clearTimeout(timeout)
   }
 
   if (!response.ok) {
