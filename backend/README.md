@@ -64,6 +64,7 @@ recognized text are not written to logs.
 - `GOOGLE_TRANSLATE_CREDENTIALS`: Translation service-account JSON path
 - `GOOGLE_TTS_CREDENTIALS`: TTS service-account JSON path
 - `GOOGLE_TIMEOUT_SECONDS`: per-request timeout, default `15`
+- `TRANSLATION_GLOSSARY`: glossary JSON path, defaults to `glossary.json`
 - `TTS_ID_VOICE`: defaults to the Indonesian female voice
   `id-ID-Chirp3-HD-Pulcherrima`
 - `TTS_ID_SPEAKING_RATE`: defaults to `0.9`
@@ -72,6 +73,34 @@ Translation uses Cloud Translation v3 at `global` and reads the project ID from
 the Translation service-account credentials. TTS returns MP3 (`audio/mpeg`). If
 the configured voice rejects speaking-rate control, synthesis is retried once at
 the voice's default rate.
+
+#### Translation glossary
+
+The backend glossary protects family-specific terms before sending HTML to
+Google Translation. It is applied only to the Google provider; mock translations
+remain unchanged. The bundled `glossary.json` starts with:
+
+```json
+{
+  "entries": [
+    {
+      "id": ["Nenek"],
+      "zh-TW": ["阿嬤", "阿媽", "阿罵"]
+    }
+  ]
+}
+```
+
+Each entry maps equivalent terms across languages. The first value for each
+language is the canonical target spelling; later values are accepted source
+aliases. To add a term, append another object under `entries`, with at least two
+language keys and a non-empty list for each language. Indonesian matching is
+case-insensitive and respects word boundaries. Chinese aliases are matched
+without word-boundary requirements.
+
+Source text is HTML-escaped before protected terms are wrapped in
+`<span translate="no">`. The returned span tags are removed and HTML entities
+are decoded before the translation is returned to the API pipeline.
 
 Do not commit service-account JSON or tokens. The example paths under
 `~/.config/ama-and-nurse/` are outside this repository.

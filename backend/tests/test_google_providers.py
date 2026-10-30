@@ -47,7 +47,7 @@ def test_google_translate_builds_v3_global_plain_text_request(
         "contents": [text],
         "source_language_code": source,
         "target_language_code": target,
-        "mime_type": "text/plain",
+        "mime_type": "text/html",
     }
 
 

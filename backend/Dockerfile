@@ -9,7 +9,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /bin/
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md glossary.json ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev

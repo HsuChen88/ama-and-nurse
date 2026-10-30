@@ -6,7 +6,6 @@ import time
 import wave
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,7 @@ from google.oauth2 import service_account
 
 from backend.config import Settings
 from backend.errors import ProviderError
+from backend.glossary import TranslationGlossary
 
 logger = logging.getLogger(__name__)
 
@@ -130,26 +130,34 @@ class RemoteAsrProvider(AsrProvider):
 
 
 class GoogleTranslateProvider(TranslateProvider):
-    def __init__(self, client: Any, project_id: str, timeout_seconds: float = 15):
+    def __init__(
+        self,
+        client: Any,
+        project_id: str,
+        timeout_seconds: float = 15,
+        glossary: TranslationGlossary | None = None,
+    ):
         self.client = client
         self.parent = f"projects/{project_id}/locations/global"
         self.timeout_seconds = timeout_seconds
+        self.glossary = glossary or TranslationGlossary()
 
     def translate(self, text: str, source: str, target: str) -> str:
+        protected_text = self.glossary.prepare(text, source, target)
         try:
             response = self.client.translate_text(
                 request={
                     "parent": self.parent,
-                    "contents": [text],
+                    "contents": [protected_text],
                     "source_language_code": source,
                     "target_language_code": target,
-                    "mime_type": "text/plain",
+                    "mime_type": "text/html",
                 },
                 timeout=self.timeout_seconds,
             )
         except GoogleAPIError as exc:
             raise ProviderError("Google Translation request failed") from exc
-        return unescape(response.translations[0].translated_text)
+        return self.glossary.restore(response.translations[0].translated_text)
 
 
 class GoogleTtsProvider(TtsProvider):
@@ -285,8 +293,12 @@ def _build_translate(settings: Settings, resources: list[Any]) -> TranslateProvi
         raise ValueError("Google Translation credentials do not contain a project_id")
     client = translate_v3.TranslationServiceClient(credentials=credentials)
     resources.append(client)
+    glossary = TranslationGlossary.from_file(settings.translation_glossary)
     return GoogleTranslateProvider(
-        client, credentials.project_id, settings.google_timeout_seconds
+        client,
+        credentials.project_id,
+        settings.google_timeout_seconds,
+        glossary,
     )
 
 
