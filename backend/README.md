@@ -63,6 +63,7 @@ recognized text are not written to logs.
 
 - `GOOGLE_TRANSLATE_CREDENTIALS`: Translation service-account JSON path
 - `GOOGLE_TTS_CREDENTIALS`: TTS service-account JSON path
+- `GOOGLE_TIMEOUT_SECONDS`: per-request timeout, default `15`
 - `TTS_ID_VOICE`: defaults to the Indonesian female voice
   `id-ID-Chirp3-HD-Pulcherrima`
 - `TTS_ID_SPEAKING_RATE`: defaults to `0.9`

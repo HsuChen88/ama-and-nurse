@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from google.api_core.exceptions import InvalidArgument
+from google.api_core.exceptions import GoogleAPIError, InvalidArgument
 from google.cloud import texttospeech, translate_v3
 from google.oauth2 import service_account
 
@@ -130,28 +130,40 @@ class RemoteAsrProvider(AsrProvider):
 
 
 class GoogleTranslateProvider(TranslateProvider):
-    def __init__(self, client: Any, project_id: str):
+    def __init__(self, client: Any, project_id: str, timeout_seconds: float = 15):
         self.client = client
         self.parent = f"projects/{project_id}/locations/global"
+        self.timeout_seconds = timeout_seconds
 
     def translate(self, text: str, source: str, target: str) -> str:
-        response = self.client.translate_text(
-            request={
-                "parent": self.parent,
-                "contents": [text],
-                "source_language_code": source,
-                "target_language_code": target,
-                "mime_type": "text/plain",
-            }
-        )
+        try:
+            response = self.client.translate_text(
+                request={
+                    "parent": self.parent,
+                    "contents": [text],
+                    "source_language_code": source,
+                    "target_language_code": target,
+                    "mime_type": "text/plain",
+                },
+                timeout=self.timeout_seconds,
+            )
+        except GoogleAPIError as exc:
+            raise ProviderError("Google Translation request failed") from exc
         return unescape(response.translations[0].translated_text)
 
 
 class GoogleTtsProvider(TtsProvider):
-    def __init__(self, client: Any, voice_name: str, speaking_rate: float):
+    def __init__(
+        self,
+        client: Any,
+        voice_name: str,
+        speaking_rate: float,
+        timeout_seconds: float = 15,
+    ):
         self.client = client
         self.voice_name = voice_name
         self.speaking_rate = speaking_rate
+        self.timeout_seconds = timeout_seconds
 
     def synthesize(self, text: str, lang: str) -> tuple[bytes, str]:
         del lang
@@ -168,19 +180,26 @@ class GoogleTtsProvider(TtsProvider):
                 input=synthesis_input,
                 voice=voice,
                 audio_config=audio_config,
+                timeout=self.timeout_seconds,
             )
         except InvalidArgument:
             logger.warning(
                 "Google TTS voice rejected speaking rate; retrying without rate voice=%s",
                 self.voice_name,
             )
-            response = self.client.synthesize_speech(
-                input=synthesis_input,
-                voice=voice,
-                audio_config=texttospeech.AudioConfig(
-                    audio_encoding=texttospeech.AudioEncoding.MP3
-                ),
-            )
+            try:
+                response = self.client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=voice,
+                    audio_config=texttospeech.AudioConfig(
+                        audio_encoding=texttospeech.AudioEncoding.MP3
+                    ),
+                    timeout=self.timeout_seconds,
+                )
+            except GoogleAPIError as exc:
+                raise ProviderError("Google TTS request failed") from exc
+        except GoogleAPIError as exc:
+            raise ProviderError("Google TTS request failed") from exc
         return response.audio_content, "audio/mpeg"
 
 
@@ -266,7 +285,9 @@ def _build_translate(settings: Settings, resources: list[Any]) -> TranslateProvi
         raise ValueError("Google Translation credentials do not contain a project_id")
     client = translate_v3.TranslationServiceClient(credentials=credentials)
     resources.append(client)
-    return GoogleTranslateProvider(client, credentials.project_id)
+    return GoogleTranslateProvider(
+        client, credentials.project_id, settings.google_timeout_seconds
+    )
 
 
 def _build_id_tts(settings: Settings, resources: list[Any]) -> TtsProvider:
@@ -281,7 +302,10 @@ def _build_id_tts(settings: Settings, resources: list[Any]) -> TtsProvider:
     client = texttospeech.TextToSpeechClient(credentials=credentials)
     resources.append(client)
     return GoogleTtsProvider(
-        client, settings.tts_id_voice, settings.tts_id_speaking_rate
+        client,
+        settings.tts_id_voice,
+        settings.tts_id_speaking_rate,
+        settings.google_timeout_seconds,
     )
 
 

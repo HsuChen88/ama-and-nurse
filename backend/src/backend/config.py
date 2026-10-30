@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     inference_timeout_seconds: float = Field(default=120, gt=0)
     google_translate_credentials: str | None = None
     google_tts_credentials: str | None = None
+    google_timeout_seconds: float = Field(default=15, gt=0)
     tts_id_voice: str = "id-ID-Chirp3-HD-Pulcherrima"
     tts_id_speaking_rate: float = Field(default=0.9, ge=0.25, le=2.0)
     audio_ttl_seconds: int = 3600

@@ -3,6 +3,8 @@ import wave
 
 import pytest
 
+from backend.errors import ProviderError
+
 
 @pytest.mark.parametrize(
     ("speaker", "source_lang", "target_lang", "source_text", "translated_text"),
@@ -131,6 +133,16 @@ def test_upstream_error(client, audio_factory):
     class FailingTranslate:
         def translate(self, text, source, target):
             raise RuntimeError("provider unavailable")
+
+    client.app.state.pipeline.translate_provider = FailingTranslate()
+    response = post_audio(client, audio_factory())
+    assert_error(response, 502, "UPSTREAM_ERROR")
+
+
+def test_provider_error_is_returned_as_upstream_error(client, audio_factory):
+    class FailingTranslate:
+        def translate(self, text, source, target):
+            raise ProviderError("Google Translation request failed")
 
     client.app.state.pipeline.translate_provider = FailingTranslate()
     response = post_audio(client, audio_factory())
