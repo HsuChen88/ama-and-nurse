@@ -73,7 +73,8 @@ function App() {
   }, [playAudio, state.activeSpeaker])
 
   const startRecording = async (speaker: Speaker) => {
-    if (state.status !== 'idle' || isStarting) return
+    if (!['idle', 'error'].includes(state.status) || isStarting) return
+    if (state.status === 'error') dispatch({ type: 'DISMISS_ERROR' })
     setIsStarting(true)
     try {
       await recorderRef.current.start()
@@ -169,8 +170,7 @@ function App() {
       <section className="speaker-actions" aria-label="選擇說話者">
         {(['ama', 'caregiver'] as const).map((speaker) => {
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
-          const isDisabled = busy || state.status === 'error' ||
-            (state.status === 'recording' && !isActive)
+          const isDisabled = busy || (state.status === 'recording' && !isActive)
           const label = SPEAKER_LABELS[speaker]
           return (
             <button

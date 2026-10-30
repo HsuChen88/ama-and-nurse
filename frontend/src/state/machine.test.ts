@@ -69,4 +69,13 @@ describe('appReducer', () => {
     expect(failed.errorCode).toBe('MIC_DENIED')
     expect(appReducer(failed, { type: 'DISMISS_ERROR' }).status).toBe('idle')
   })
+
+  it('starts recording directly from an error and clears it', () => {
+    const failed = appReducer(initialState, { type: 'FAIL', code: 'NETWORK_ERROR' })
+    const recording = appReducer(failed, { type: 'START_RECORDING', speaker: 'caregiver' })
+
+    expect(recording.status).toBe('recording')
+    expect(recording.activeSpeaker).toBe('caregiver')
+    expect(recording.errorCode).toBeNull()
+  })
 })

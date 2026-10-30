@@ -35,7 +35,7 @@ export type AppAction =
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'START_RECORDING':
-      if (state.status !== 'idle') return state
+      if (state.status !== 'idle' && state.status !== 'error') return state
       return {
         ...state,
         status: 'recording',
