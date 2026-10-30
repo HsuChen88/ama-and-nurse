@@ -4,6 +4,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from backend.audio import AudioPreprocessor
 from backend.config import Settings, get_settings
@@ -82,7 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if audio is None:
             raise ApiError("INVALID_AUDIO", "Audio file is required", 422)
         audio_bytes = await read_limited(audio)
-        return app.state.pipeline.run(audio_bytes, speaker).to_dict()
+        result = await run_in_threadpool(app.state.pipeline.run, audio_bytes, speaker)
+        return result.to_dict()
 
     @app.get("/api/audio/{audio_id}")
     def get_audio(audio_id: str) -> Response:
