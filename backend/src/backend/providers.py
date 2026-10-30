@@ -157,7 +157,9 @@ class GoogleTranslateProvider(TranslateProvider):
             )
         except GoogleAPIError as exc:
             raise ProviderError("Google Translation request failed") from exc
-        return self.glossary.restore(response.translations[0].translated_text)
+        return self.glossary.restore(
+            response.translations[0].translated_text, target=target
+        )
 
 
 class GoogleTtsProvider(TtsProvider):

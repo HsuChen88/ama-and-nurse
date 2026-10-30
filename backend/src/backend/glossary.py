@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import Any
 
 _SPAN_TAG = re.compile(r"</?span(?:\s[^>]*)?>", re.IGNORECASE)
+_SPAN_OPEN = r"<span(?:\s[^>]*)?>"
+_SPACE_BEFORE_SPAN = re.compile(rf"\s+(?={_SPAN_OPEN})", re.IGNORECASE)
+_SPACE_AFTER_SPAN = re.compile(r"(</span>)\s+", re.IGNORECASE)
+_SPACE_BEFORE_PUNCTUATION_AFTER_SPAN = re.compile(
+    r"(</span>)\s+(?=[,\.?!;:，。？！；：、．])", re.IGNORECASE
+)
 
 
 class TranslationGlossary:
@@ -39,8 +45,12 @@ class TranslationGlossary:
         return pattern.sub(replace, escaped_text)
 
     @staticmethod
-    def restore(translated_html: str) -> str:
-        return unescape(_SPAN_TAG.sub("", translated_html))
+    def restore(translated_html: str, target: str | None = None) -> str:
+        cleaned = _SPACE_BEFORE_PUNCTUATION_AFTER_SPAN.sub(r"\1", translated_html)
+        if target and target.startswith("zh"):
+            cleaned = _SPACE_BEFORE_SPAN.sub("", cleaned)
+            cleaned = _SPACE_AFTER_SPAN.sub(r"\1", cleaned)
+        return unescape(_SPAN_TAG.sub("", cleaned))
 
     def _build(self, entries: list[dict[str, list[str]]]) -> None:
         mappings: dict[tuple[str, str], dict[str, str]] = {}

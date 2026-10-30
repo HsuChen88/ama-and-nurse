@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from backend.glossary import TranslationGlossary
 from backend.providers import GoogleTranslateProvider
 
@@ -59,6 +61,53 @@ def test_empty_glossary_only_escapes_and_restores_html():
 
     assert protected == "Nenek &lt; sehat &amp; aman"
     assert glossary.restore(protected) == "Nenek < sehat & aman"
+
+
+@pytest.mark.parametrize(
+    "punctuation",
+    [
+        ",",
+        ".",
+        "?",
+        "!",
+        ";",
+        ":",
+        "，",
+        "。",
+        "？",
+        "！",
+        "；",
+        "：",
+        "、",
+        "．",
+    ],
+)
+def test_restore_removes_span_generated_space_before_punctuation(punctuation):
+    translated = f'<span translate="no">Nenek</span> {punctuation} apakah sudah makan?'
+
+    restored = TranslationGlossary.restore(translated, target="id")
+
+    assert restored == f"Nenek{punctuation} apakah sudah makan?"
+
+
+def test_restore_does_not_change_normal_spaces_unrelated_to_spans():
+    translated = "Hari ini cerah , tetapi besok hujan."
+
+    assert TranslationGlossary.restore(translated, target="id") == translated
+
+
+def test_restore_keeps_normal_indonesian_word_space_after_glossary_term():
+    translated = '<span translate="no">Nenek</span> sudah makan?'
+
+    assert TranslationGlossary.restore(translated, target="id") == (
+        "Nenek sudah makan?"
+    )
+
+
+def test_restore_removes_spaces_around_glossary_terms_in_chinese():
+    translated = '請問 <span translate="no">阿嬤</span> 哪裡痛？'
+
+    assert TranslationGlossary.restore(translated, target="zh-TW") == "請問阿嬤哪裡痛？"
 
 
 def test_glossary_loads_from_configurable_json_file(tmp_path):
