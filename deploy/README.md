@@ -17,7 +17,9 @@ docker compose up --build backend inference
 The credential files are mounted read-only. The backend reaches inference on the
 private Compose network at `http://inference:8001`; inference has no published
 host port. The public backend API is available at `http://localhost:8000`. The
-commented `frontend` service is a placeholder for the separately developed PWA.
+backend uses its bundled `/app/glossary.json`; `GOOGLE_TIMEOUT_SECONDS` defaults
+to 15 seconds. The commented `frontend` service is a placeholder for the
+separately developed PWA.
 
 ## Planned external architecture
 
