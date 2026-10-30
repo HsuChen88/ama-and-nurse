@@ -1,0 +1,34 @@
+[project]
+name = "ama-inference"
+version = "0.1.0"
+description = "Self-hosted model inference service for Ama's Translator"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # faster-whisper 1.2.1 passes an argument removed by PyAV 19.
+    "av>=11,<19",
+    "fastapi>=0.115.0,<1",
+    "faster-whisper>=1.1.0,<2",
+    "python-multipart>=0.0.18,<1",
+    "uvicorn[standard]>=0.32.0,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0,<1",
+    "pytest>=8.3.0,<9",
+]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not model'"
+markers = [
+    "model: downloads and runs a real ASR model",
+]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inference_service"]
