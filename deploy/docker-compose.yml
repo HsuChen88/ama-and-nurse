@@ -17,6 +17,7 @@ services:
       GOOGLE_TTS_CREDENTIALS: /run/secrets/gcp-tts-sa.json
       GOOGLE_TIMEOUT_SECONDS: ${GOOGLE_TIMEOUT_SECONDS:-15}
       TRANSLATION_GLOSSARY: /app/glossary.json
+      PROVIDER_WARMUP: ${PROVIDER_WARMUP:-true}
       TTS_ID_VOICE: ${TTS_ID_VOICE:-id-ID-Chirp3-HD-Pulcherrima}
       TTS_ID_SPEAKING_RATE: ${TTS_ID_SPEAKING_RATE:-0.9}
       CORS_ORIGINS: http://localhost:5173

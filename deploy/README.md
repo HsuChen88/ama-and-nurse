@@ -18,8 +18,9 @@ The credential files are mounted read-only. The backend reaches inference on the
 private Compose network at `http://inference:8001`; inference has no published
 host port. The public backend API is available at `http://localhost:8000`. The
 backend uses its bundled `/app/glossary.json`; `GOOGLE_TIMEOUT_SECONDS` defaults
-to 15 seconds. The commented `frontend` service is a placeholder for the
-separately developed PWA.
+to 15 seconds. Google Translation and TTS are warmed once during startup by
+default; set `PROVIDER_WARMUP=false` to disable this behavior. The commented
+`frontend` service is a placeholder for the separately developed PWA.
 
 ## Planned external architecture
 
