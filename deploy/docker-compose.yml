@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ../backend
+    environment:
+      ASR_NAN_PROVIDER: mock
+      ASR_ID_PROVIDER: mock
+      TRANSLATE_PROVIDER: mock
+      TTS_ID_PROVIDER: mock
+      TTS_NAN_PROVIDER: mock
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # frontend:
+  #   build:
+  #     context: ../frontend
+  #   ports:
+  #     - "5173:80"
+  #   depends_on:
+  #     - backend
