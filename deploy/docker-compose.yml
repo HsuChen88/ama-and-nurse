@@ -3,14 +3,37 @@ services:
     build:
       context: ../backend
     environment:
-      ASR_NAN_PROVIDER: mock
-      ASR_ID_PROVIDER: mock
-      TRANSLATE_PROVIDER: mock
-      TTS_ID_PROVIDER: mock
+      ASR_NAN_PROVIDER: ${ASR_NAN_PROVIDER:-remote}
+      ASR_ID_PROVIDER: ${ASR_ID_PROVIDER:-remote}
+      TRANSLATE_PROVIDER: ${TRANSLATE_PROVIDER:-google}
+      TTS_ID_PROVIDER: ${TTS_ID_PROVIDER:-google}
       TTS_NAN_PROVIDER: mock
+      INFERENCE_BASE_URL: ${INFERENCE_BASE_URL:-http://inference:8001}
+      INFERENCE_API_TOKEN: ${INFERENCE_API_TOKEN:-}
+      INFERENCE_CF_ACCESS_CLIENT_ID: ${INFERENCE_CF_ACCESS_CLIENT_ID:-}
+      INFERENCE_CF_ACCESS_CLIENT_SECRET: ${INFERENCE_CF_ACCESS_CLIENT_SECRET:-}
+      INFERENCE_TIMEOUT_SECONDS: ${INFERENCE_TIMEOUT_SECONDS:-120}
+      GOOGLE_TRANSLATE_CREDENTIALS: /run/secrets/gcp-translation-sa.json
+      GOOGLE_TTS_CREDENTIALS: /run/secrets/gcp-tts-sa.json
+      TTS_ID_VOICE: ${TTS_ID_VOICE:-id-ID-Chirp3-HD-Pulcherrima}
+      TTS_ID_SPEAKING_RATE: ${TTS_ID_SPEAKING_RATE:-0.9}
       CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ${HOME}/.config/ama-and-nurse/gcp-translation-sa.json:/run/secrets/gcp-translation-sa.json:ro
+      - ${HOME}/.config/ama-and-nurse/gcp-tts-sa.json:/run/secrets/gcp-tts-sa.json:ro
+    depends_on:
+      - inference
     ports:
       - "8000:8000"
+    restart: unless-stopped
+
+  inference:
+    build:
+      context: ../inference
+    environment:
+      INFERENCE_API_TOKEN: ${INFERENCE_API_TOKEN:-}
+    expose:
+      - "8001"
     restart: unless-stopped
 
   # frontend:
