@@ -1,0 +1,1 @@
+"""Ama's Translator backend."""
