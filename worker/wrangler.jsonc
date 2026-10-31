@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ama-translator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "routes": [
+    {
+      "pattern": "ama.ama-ama.com",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  },
+  "assets": {
+    "directory": "../frontend/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "INFERENCE_BASE_URL": "https://inference.ama-ama.com",
+    "TTS_ID_VOICE": "id-ID-Chirp3-HD-Pulcherrima",
+    "TTS_ID_SPEAKING_RATE": "0.9",
+    "INFERENCE_TIMEOUT_MS": "30000",
+    "GOOGLE_TIMEOUT_MS": "15000"
+  }
+}
