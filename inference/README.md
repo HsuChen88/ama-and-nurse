@@ -1,6 +1,8 @@
 # Inference service
 
-FastAPI service for self-hosted ASR. The same code runs with CTranslate2 on macOS CPU and NVIDIA CUDA. Models load on the first request for each language unless preloaded.
+FastAPI service for self-hosted ASR and the authenticated Taiwanese TTS proxy.
+ASR runs locally with CTranslate2; `/v1/tts` forwards to the private
+`taigi-tts` container using only Python's standard HTTP library.
 
 ## Models and licenses
 
@@ -43,6 +45,12 @@ uv run python scripts/smoke.py sample.webm \
 ```
 
 For a Cloudflare Access protected hostname, also pass `--cf-access-client-id` and `--cf-access-client-secret`.
+
+`POST /v1/tts` accepts JSON containing 1–200 Traditional Chinese characters
+and `language: "nan-TW"`. Configure the internal backend with
+`TAIGI_TTS_URL` and `TAIGI_TTS_TIMEOUT_SECONDS`. It returns MP3 bytes and the
+percent-encoded Taiwanese Han/romanization headers defined by
+`docs/inference-contract.md`.
 
 ## Tests
 

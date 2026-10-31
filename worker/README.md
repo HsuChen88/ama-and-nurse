@@ -5,8 +5,9 @@
 由 Worker 執行，其餘路徑由 `../frontend/dist` 提供並使用 SPA fallback。
 
 翻譯流程：瀏覽器原始錄音 → titan inference ASR → Google Translation v3 →
-Google Cloud TTS。台語 TTS 尚未決定，`caregiver` 方向目前只回傳短 WAV 提示音，
-不會用華語語音替代。
+Google Cloud TTS 或 titan 台語 TTS。`caregiver` 方向會把 Google 產生的華語
+送到 inference `/v1/tts`；後端錯誤或逾時時回退到原有短 WAV 提示音，不會
+讓整個翻譯請求失敗，也不會用華語語音替代。
 
 ## 本機設定
 
@@ -36,6 +37,7 @@ pnpm wrangler kv key put invite:ABCDEFGH \
 - `TTS_ID_VOICE`
 - `TTS_ID_SPEAKING_RATE`
 - `INFERENCE_TIMEOUT_MS`
+- `INFERENCE_TTS_TIMEOUT_MS`
 - `GOOGLE_TIMEOUT_MS`
 
 以下必須設為 Worker secrets，不可提交到 Git：
