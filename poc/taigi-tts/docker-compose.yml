@@ -1,0 +1,33 @@
+services:
+  taigi-tts-poc:
+    build:
+      context: .
+      network: host
+      args:
+        KAEDETAI_COMMIT: 81959852f75c972a0a78364f8ea6b14133a11f4a
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "1"
+      TAIGI_POC_OUT: /out
+    volumes:
+      - taigi-poc-models:/models:ro
+      - ${HOME}/taigi-poc-out:/out
+    networks:
+      - egress
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  taigi-poc-models:
+    external: true
+
+networks:
+  egress:
+    external: true
+    name: ${DOCKER_EGRESS_NETWORK:-wasn-egress}
