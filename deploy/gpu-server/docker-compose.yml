@@ -15,8 +15,42 @@ services:
       HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       ASR_NAN_MODEL: ${ASR_NAN_MODEL:-weemed/Breeze-ASR-26-ct2}
       ASR_ID_MODEL: ${ASR_ID_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
+      TAIGI_TTS_URL: http://taigi-tts:8002
+      TAIGI_TTS_TIMEOUT_SECONDS: ${TAIGI_TTS_TIMEOUT_SECONDS:-30}
     volumes:
       - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - taigi-tts
+
+  taigi-tts:
+    build:
+      context: ../../taigi-tts
+      network: none
+      args:
+        BASE_IMAGE: ${TAIGI_TTS_BASE_IMAGE:-taigi-tts-taigi-tts-poc:latest}
+    restart: unless-stopped
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "1"
+      LLAMA_DTYPE: ${LLAMA_DTYPE:-fp16}
+      TAIGI_TTS_MAX_QUEUE: ${TAIGI_TTS_MAX_QUEUE:-2}
+      TAIGI_TTS_CACHE_MAX_ITEMS: ${TAIGI_TTS_CACHE_MAX_ITEMS:-128}
+      TAIGI_TTS_MODEL_VERSION: ${TAIGI_TTS_MODEL_VERSION:-taigi-llama-2-7b+gpt-sovits-tw-r4-e15-v2protw}
+      TAIGI_TTS_CACHE_DIR: /cache
+      TW_TTS_OUT: /cache/tw-synth
+      TW_TTS_REF: ${TW_TTS_REF:-/opt/GPT-SoVITS/tw_samples/ref_001.wav}
+      TW_TTS_REF_TEXT: ${TW_TTS_REF_TEXT:-}
+    volumes:
+      - taigi-poc-models:/models:ro
+      - taigi-tts-cache:/cache
     deploy:
       resources:
         reservations:
@@ -36,6 +70,9 @@ services:
 
 volumes:
   huggingface-cache:
+  taigi-tts-cache:
+  taigi-poc-models:
+    external: true
 
 # Only this pre-created bridge (br-wasn-egress) is allowed outbound by the host firewall.
 networks:
