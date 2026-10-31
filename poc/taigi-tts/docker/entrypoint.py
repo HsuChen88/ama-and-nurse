@@ -59,9 +59,9 @@ links = {
         ROOT / "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
     MODELS / "lj1995/chinese-hubert-base":
         ROOT / "GPT_SoVITS/pretrained_models/chinese-hubert-base",
-    MODELS / "lj1995/s2Gv2Pro.pth":
+    MODELS / "lj1995/v2Pro/s2Gv2Pro.pth":
         ROOT / "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth",
-    MODELS / "lj1995/s2Dv2Pro.pth":
+    MODELS / "lj1995/v2Pro/s2Dv2Pro.pth":
         ROOT / "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2Pro.pth",
     MODELS / "lj1995/sv": ROOT / "GPT_SoVITS/pretrained_models/sv",
 }
