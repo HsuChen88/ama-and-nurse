@@ -5,6 +5,22 @@ export interface TestServiceAccount {
   publicKey: CryptoKey
 }
 
+export class MemoryInvites {
+  private readonly values = new Map<string, string>()
+
+  async get(key: string): Promise<string | null> {
+    return this.values.get(key) ?? null
+  }
+
+  async put(key: string, value: string): Promise<void> {
+    this.values.set(key, value)
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key)
+  }
+}
+
 export const baseEnv: Env = {
   INFERENCE_BASE_URL: 'https://inference.example',
   INFERENCE_API_TOKEN: 'inference-token',
@@ -16,6 +32,16 @@ export const baseEnv: Env = {
   TTS_ID_SPEAKING_RATE: '0.9',
   INFERENCE_TIMEOUT_MS: '30000',
   GOOGLE_TIMEOUT_MS: '15000',
+  DEVICE_SIGNING_KEY: 'test-device-signing-key',
+  INVITES: new MemoryInvites() as unknown as KVNamespace,
+}
+
+export function makeTestEnv(overrides: Partial<Env> = {}): Env {
+  return {
+    ...baseEnv,
+    INVITES: new MemoryInvites() as unknown as KVNamespace,
+    ...overrides,
+  }
 }
 
 export async function makeServiceAccount(
@@ -50,11 +76,16 @@ export async function makeServiceAccount(
 export function audioRequest(
   speaker: string = 'ama',
   audio: Blob = new Blob(['browser-audio'], { type: 'audio/webm' }),
+  cookie?: string,
 ): Request {
   const form = new FormData()
   form.append('speaker', speaker)
   form.append('audio', audio, 'recording.webm')
-  return new Request('https://ama.example/api/translate', { method: 'POST', body: form })
+  return new Request('https://ama.example/api/translate', {
+    method: 'POST',
+    body: form,
+    headers: cookie ? { Cookie: cookie } : undefined,
+  })
 }
 
 export function jsonResponse(body: unknown, status = 200): Response {

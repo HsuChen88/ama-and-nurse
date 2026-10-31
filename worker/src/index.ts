@@ -6,6 +6,14 @@ import {
   transcribe,
   translateText,
 } from './providers'
+import {
+  authenticateDevice,
+  inviteExists,
+  issueDeviceToken,
+  normalizeInviteCode,
+  refreshedCookie,
+  serializeDeviceCookie,
+} from './session'
 import { SPEAKERS, type Env, type Speaker } from './types'
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024
@@ -14,20 +22,87 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/api/health' && request.method === 'GET') return healthResponse()
+    if (url.pathname === '/api/session' && request.method === 'GET') {
+      return sessionResponse(request, env)
+    }
+    if (url.pathname === '/api/activate' && request.method === 'POST') {
+      return activateResponse(request, env)
+    }
+    if (url.pathname.startsWith('/join/') && request.method === 'GET') {
+      return joinResponse(url.pathname.slice('/join/'.length), env)
+    }
     if (url.pathname === '/api/translate' && request.method === 'POST') {
-      try {
-        return await translateResponse(request, env)
-      } catch (error) {
-        if (error instanceof ApiError) return errorResponse(error)
-        console.warn('Translation request failed', { error_type: errorName(error) })
-        return errorResponse(upstreamError())
+      const session = await authenticateDevice(request, env)
+      if (!session) {
+        return errorResponse(new ApiError('NOT_ACTIVATED', 'Device is not activated', 401))
       }
+      let response: Response
+      try {
+        response = await translateResponse(request, env)
+      } catch (error) {
+        if (error instanceof ApiError) response = errorResponse(error)
+        else {
+          console.warn('Translation request failed', { error_type: errorName(error) })
+          response = errorResponse(upstreamError())
+        }
+      }
+      const cookie = await refreshedCookie(session, env.DEVICE_SIGNING_KEY)
+      if (cookie) response.headers.set('Set-Cookie', cookie)
+      return response
     }
     if (url.pathname.startsWith('/api/')) {
       return errorResponse(new ApiError('NOT_FOUND', 'API endpoint was not found', 404))
     }
     return errorResponse(new ApiError('NOT_FOUND', 'Resource was not found', 404))
   },
+}
+
+async function sessionResponse(request: Request, env: Env): Promise<Response> {
+  try {
+    const session = await authenticateDevice(request, env)
+    const response = Response.json({ activated: session !== null })
+    if (session) {
+      const cookie = await refreshedCookie(session, env.DEVICE_SIGNING_KEY)
+      if (cookie) response.headers.set('Set-Cookie', cookie)
+    }
+    return response
+  } catch {
+    return Response.json({ activated: false })
+  }
+}
+
+async function activateResponse(request: Request, env: Env): Promise<Response> {
+  let code: string | null = null
+  try {
+    const body = (await request.json()) as { code?: unknown }
+    code = normalizeInviteCode(body.code)
+  } catch {
+    // Invalid JSON is reported as INVALID_CODE, without logging the submitted value.
+  }
+  if (!code || !(await inviteExists(code, env.INVITES))) {
+    return errorResponse(new ApiError('INVALID_CODE', 'Invite code is invalid or revoked', 422))
+  }
+
+  const token = await issueDeviceToken(code, env.DEVICE_SIGNING_KEY)
+  return Response.json(
+    { activated: true },
+    { headers: { 'Set-Cookie': serializeDeviceCookie(token) } },
+  )
+}
+
+async function joinResponse(pathCode: string, env: Env): Promise<Response> {
+  const code = normalizeInviteCode(pathCode)
+  if (!code || !(await inviteExists(code, env.INVITES))) {
+    return new Response(null, { status: 302, headers: { Location: '/?invite=invalid' } })
+  }
+  const token = await issueDeviceToken(code, env.DEVICE_SIGNING_KEY)
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: '/',
+      'Set-Cookie': serializeDeviceCookie(token),
+    },
+  })
 }
 
 async function translateResponse(request: Request, env: Env): Promise<Response> {

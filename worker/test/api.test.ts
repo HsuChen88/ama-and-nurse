@@ -1,22 +1,27 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { resetGoogleTokenCacheForTests } from '../src/google-auth'
+import { inviteKey, issueDeviceToken } from '../src/session'
 import type { Env } from '../src/types'
-import { audioRequest, baseEnv, jsonResponse, makeServiceAccount } from './helpers'
+import { audioRequest, jsonResponse, makeServiceAccount, makeTestEnv } from './helpers'
 
 let env: Env
+let deviceCookie: string
 
 beforeAll(async () => {
   const translateAccount = await makeServiceAccount('translate@example.invalid', 'translate-project')
   const ttsAccount = await makeServiceAccount('tts@example.invalid', 'tts-project')
-  env = {
-    ...baseEnv,
+  env = makeTestEnv({
     GOOGLE_TRANSLATE_SA_JSON: translateAccount.json,
     GOOGLE_TTS_SA_JSON: ttsAccount.json,
-  }
+  })
 })
 
-beforeEach(() => resetGoogleTokenCacheForTests())
+beforeEach(async () => {
+  resetGoogleTokenCacheForTests()
+  await env.INVITES.put(inviteKey('ABCDEFGH'), '{}')
+  deviceCookie = `ama_device=${await issueDeviceToken('ABCDEFGH', env.DEVICE_SIGNING_KEY)}`
+})
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Worker API', () => {
@@ -61,7 +66,7 @@ describe('Worker API', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const response = await worker.fetch(audioRequest(), env)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     const body = (await response.json()) as {
       [key: string]: unknown
       id: string
@@ -98,7 +103,7 @@ describe('Worker API', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const response = await worker.fetch(audioRequest('caregiver'), env)
+    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
     const body = (await response.json()) as Record<string, string>
 
     expect(body.target_lang).toBe('nan-TW')
@@ -131,7 +136,7 @@ describe('Worker API', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    expect((await worker.fetch(audioRequest(), env)).status).toBe(200)
+    expect((await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)).status).toBe(200)
     expect(ttsCalls).toBe(2)
   })
 
@@ -145,7 +150,7 @@ describe('Worker API', () => {
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse({ error: { code: inferenceCode, message: 'detail' } }, 422)),
     )
-    const response = await worker.fetch(audioRequest(), env)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     expect(response.status).toBe(422)
     expect(await response.json()).toMatchObject({ error: { code: apiCode } })
   })
@@ -155,21 +160,21 @@ describe('Worker API', () => {
       'fetch',
       vi.fn().mockResolvedValue(jsonResponse({ error: { code } }, code === 'BUSY' ? 503 : 500)),
     )
-    const response = await worker.fetch(audioRequest(), env)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     expect(response.status).toBe(502)
     expect(await response.json()).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } })
   })
 
   it('maps an inference connection failure to UPSTREAM_ERROR', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('connection failed')))
-    const response = await worker.fetch(audioRequest(), env)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     expect(response.status).toBe(502)
     expect(await response.json()).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } })
   })
 
   it('returns ASR_EMPTY for blank recognition', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ text: '  ' })))
-    const response = await worker.fetch(audioRequest(), env)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     expect(response.status).toBe(422)
     expect(await response.json()).toMatchObject({ error: { code: 'ASR_EMPTY' } })
   })
@@ -178,20 +183,24 @@ describe('Worker API', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const audio = new Blob([new Uint8Array(10 * 1024 * 1024 + 1)], { type: 'audio/webm' })
-    const response = await worker.fetch(audioRequest('ama', audio), env)
+    const response = await worker.fetch(audioRequest('ama', audio, deviceCookie), env)
     expect(response.status).toBe(422)
     expect(await response.json()).toMatchObject({ error: { code: 'INVALID_AUDIO' } })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('validates speaker and audio fields', async () => {
-    const invalidSpeaker = await worker.fetch(audioRequest('other'), env)
+    const invalidSpeaker = await worker.fetch(audioRequest('other', undefined, deviceCookie), env)
     expect(await invalidSpeaker.json()).toMatchObject({ error: { code: 'INVALID_SPEAKER' } })
 
     const form = new FormData()
     form.append('speaker', 'ama')
     const missingAudio = await worker.fetch(
-      new Request('https://ama.example/api/translate', { method: 'POST', body: form }),
+      new Request('https://ama.example/api/translate', {
+        method: 'POST',
+        body: form,
+        headers: { Cookie: deviceCookie },
+      }),
       env,
     )
     expect(await missingAudio.json()).toMatchObject({ error: { code: 'INVALID_AUDIO' } })

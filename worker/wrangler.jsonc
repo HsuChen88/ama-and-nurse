@@ -11,14 +11,21 @@
   ],
   "observability": {
     "logs": {
-      "enabled": true
+      "enabled": true,
+      "invocation_logs": false
     }
   },
   "assets": {
     "directory": "../frontend/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/join/*"]
   },
+  "kv_namespaces": [
+    {
+      "binding": "INVITES",
+      "id": "REPLACE_WITH_INVITES_KV_NAMESPACE_ID"
+    }
+  ],
   "vars": {
     "INFERENCE_BASE_URL": "https://inference.ama-ama.com",
     "TTS_ID_VOICE": "id-ID-Chirp3-HD-Pulcherrima",

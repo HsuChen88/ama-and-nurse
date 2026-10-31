@@ -3,3 +3,4 @@ INFERENCE_CF_ACCESS_CLIENT_ID="fake-access-client-id"
 INFERENCE_CF_ACCESS_CLIENT_SECRET="fake-access-client-secret"
 GOOGLE_TRANSLATE_SA_JSON='{"type":"service_account","project_id":"fake-translate-project","private_key_id":"fake-key-id","private_key":"-----BEGIN PRIVATE KEY-----\\nFAKE\\n-----END PRIVATE KEY-----\\n","client_email":"fake-translate@example.invalid","token_uri":"https://oauth2.googleapis.com/token"}'
 GOOGLE_TTS_SA_JSON='{"type":"service_account","project_id":"fake-tts-project","private_key_id":"fake-key-id","private_key":"-----BEGIN PRIVATE KEY-----\\nFAKE\\n-----END PRIVATE KEY-----\\n","client_email":"fake-tts@example.invalid","token_uri":"https://oauth2.googleapis.com/token"}'
+DEVICE_SIGNING_KEY="local-development-signing-key-not-for-production"
