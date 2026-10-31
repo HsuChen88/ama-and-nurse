@@ -26,3 +26,5 @@
 | 2026-10-31 | GPU server（titan，TITAN RTX，driver 535）不升級驅動（host 上有其他 VM）：inference 映像以 CUDA 12.8 minor-version compatibility 執行並移除 forward-compat 函式庫。 |
 | 2026-10-31 | titan 平時禁止對外連線（僅 Cloudflare Tunnel 7844 常開；建置時臨時開放）：titan 只跑 GPU inference + cloudflared，執行期不得依賴外網（模型離線載入）。 |
 | 2026-10-31 | **架構 C'**：前端 + API 改由 Cloudflare Worker（`worker/`，TypeScript）提供於 `app.ama-ama.com`，Cloudflare Access 限家人；Worker 以 REST 呼叫 Google Translation / TTS，經 tunnel + service token 呼叫 titan inference。音檔解碼與長度驗證移至 inference（PyAV）。Python `backend/` 保留作本機開發參考，Worker 上線驗證後再決定移除。 |
+| 2026-10-31 | 不使用 Cloudflare Access 保護 App（長輩與看護難以登入；未來希望廣泛使用）。改用「看不見的防護」：GCP 每日用量上限、Cloudflare WAF 限流、邀請碼／邀請連結啟用裝置（一年效期，可撤銷）；有濫用跡象時再加 Turnstile 隱形模式。 |
+| 2026-10-31 | 因未來可能廣泛使用，台語 TTS 方案避開非商用（NC）授權。 |
