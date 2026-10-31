@@ -10,13 +10,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
-
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates python3.12 \
-    && rm -rf /var/lib/apt/lists/*
+    UV_LINK_MODE=copy \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    UV_PYTHON_PREFERENCE=only-managed \
+    PATH=/app/.venv/bin:$PATH
 
 COPY --from=uv /uv /uvx /bin/
+
+# Install Python via uv (HTTPS only) instead of apt: the GPU server only allows
+# outbound HTTPS, and the CUDA base image already ships ca-certificates.
+RUN uv python install 3.12
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
