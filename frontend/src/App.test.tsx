@@ -30,6 +30,16 @@ describe('device activation UI', () => {
     expect(formatInviteInput('abcd-ef')).toBe('ABCD-EF')
   })
 
+  it('renders the favicon as a decorative brand mark', async () => {
+    render(<App />)
+    expect(await screen.findByText('請家人輸入邀請碼')).toBeTruthy()
+
+    const logo = document.querySelector<HTMLImageElement>('.brand-mark img')
+    expect(logo?.getAttribute('src')).toBe('/icon.svg')
+    expect(logo?.getAttribute('alt')).toBe('')
+    expect(logo?.closest('.brand-mark')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('replaces the app with activation and enters the main screen after success', async () => {
     render(<App />)
     expect(await screen.findByText('請家人輸入邀請碼')).toBeTruthy()

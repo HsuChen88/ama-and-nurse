@@ -357,7 +357,9 @@ function App() {
 function AppHeader() {
   return (
     <header className="app-header">
-      <div className="brand-mark" aria-hidden="true">譯</div>
+      <div className="brand-mark" aria-hidden="true">
+        <img src="/icon.svg" alt="" />
+      </div>
       <div>
         <h1>阿嬤的翻譯機</h1>
       </div>
