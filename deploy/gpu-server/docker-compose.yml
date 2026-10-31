@@ -12,6 +12,7 @@ services:
       INFERENCE_COMPUTE_TYPE: ${INFERENCE_COMPUTE_TYPE:-float16}
       INFERENCE_PRELOAD: ${INFERENCE_PRELOAD:-nan-TW,id}
       INFERENCE_MAX_QUEUE: ${INFERENCE_MAX_QUEUE:-4}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-1}
       ASR_NAN_MODEL: ${ASR_NAN_MODEL:-weemed/Breeze-ASR-26-ct2}
       ASR_ID_MODEL: ${ASR_ID_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
     volumes:
