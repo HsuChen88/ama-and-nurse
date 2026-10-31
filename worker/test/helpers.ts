@@ -31,6 +31,7 @@ export const baseEnv: Env = {
   TTS_ID_VOICE: 'id-ID-Chirp3-HD-Pulcherrima',
   TTS_ID_SPEAKING_RATE: '0.9',
   INFERENCE_TIMEOUT_MS: '30000',
+  INFERENCE_TTS_TIMEOUT_MS: '30000',
   GOOGLE_TIMEOUT_MS: '15000',
   DEVICE_SIGNING_KEY: 'test-device-signing-key',
   INVITES: new MemoryInvites() as unknown as KVNamespace,

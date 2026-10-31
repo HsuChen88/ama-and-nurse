@@ -8,6 +8,7 @@ export interface Env {
   TTS_ID_VOICE: string
   TTS_ID_SPEAKING_RATE: string
   INFERENCE_TIMEOUT_MS: string
+  INFERENCE_TTS_TIMEOUT_MS: string
   GOOGLE_TIMEOUT_MS: string
   DEVICE_SIGNING_KEY: string
   INVITES: KVNamespace

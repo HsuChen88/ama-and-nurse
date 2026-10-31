@@ -2,7 +2,7 @@ import { ApiError, errorResponse, upstreamError } from './errors'
 import {
   encodeBase64,
   synthesizeIndonesian,
-  synthesizePendingTaiwanese,
+  synthesizeTaiwanese,
   transcribe,
   translateText,
 } from './providers'
@@ -148,7 +148,7 @@ async function translateResponse(request: Request, env: Env): Promise<Response> 
   const synthesized =
     config.targetLang === 'id'
       ? await synthesizeIndonesian(translatedText, env)
-      : synthesizePendingTaiwanese()
+      : await synthesizeTaiwanese(translatedText, env)
   const ttsMs = elapsedMs(started)
 
   return Response.json({
@@ -177,7 +177,7 @@ function healthResponse(): Response {
       asr_id: 'remote',
       translate: 'google',
       tts_id: 'google',
-      tts_nan: 'pending',
+      tts_nan: 'remote',
     },
   })
 }

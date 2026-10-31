@@ -18,13 +18,7 @@ export async function transcribe(
   const form = new FormData()
   form.append('audio', audio, audio.name || 'recording')
   form.append('language', language)
-  const headers = new Headers({ Authorization: `Bearer ${env.INFERENCE_API_TOKEN}` })
-  if (env.INFERENCE_CF_ACCESS_CLIENT_ID) {
-    headers.set('CF-Access-Client-Id', env.INFERENCE_CF_ACCESS_CLIENT_ID)
-  }
-  if (env.INFERENCE_CF_ACCESS_CLIENT_SECRET) {
-    headers.set('CF-Access-Client-Secret', env.INFERENCE_CF_ACCESS_CLIENT_SECRET)
-  }
+  const headers = inferenceHeaders(env)
 
   const started = performance.now()
   let response: Response
@@ -138,6 +132,55 @@ export async function synthesizeIndonesian(
     return { bytes: decodeBase64(body.audioContent), mime: 'audio/mpeg' }
   } catch {
     throw upstreamError()
+  }
+}
+
+export async function synthesizeTaiwanese(
+  text: string,
+  env: Env,
+): Promise<{ bytes: Uint8Array; mime: 'audio/mpeg' | 'audio/wav' }> {
+  const started = performance.now()
+  let response: Response
+  try {
+    const headers = inferenceHeaders(env)
+    headers.set('Content-Type', 'application/json')
+    response = await fetch(`${env.INFERENCE_BASE_URL.replace(/\/$/, '')}/v1/tts`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text, language: 'nan-TW' }),
+      signal: AbortSignal.timeout(numberSetting(env.INFERENCE_TTS_TIMEOUT_MS, 30_000)),
+    })
+  } catch {
+    console.warn('Inference TTS request failed; using fallback', {
+      status_code: null,
+      elapsed_ms: elapsedMs(started),
+    })
+    return synthesizePendingTaiwanese()
+  }
+  const elapsed = elapsedMs(started)
+  console.log('Inference TTS request completed', {
+    status_code: response.status,
+    elapsed_ms: elapsed,
+  })
+  if (!response.ok) {
+    console.warn('Inference TTS returned an error; using fallback', {
+      status_code: response.status,
+      elapsed_ms: elapsed,
+    })
+    return synthesizePendingTaiwanese()
+  }
+  try {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.toLowerCase().startsWith('audio/mpeg')) throw new Error()
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.length === 0) throw new Error()
+    return { bytes, mime: 'audio/mpeg' }
+  } catch {
+    console.warn('Inference TTS returned invalid audio; using fallback', {
+      status_code: response.status,
+      elapsed_ms: elapsedMs(started),
+    })
+    return synthesizePendingTaiwanese()
   }
 }
 
@@ -259,4 +302,15 @@ function elapsedMs(started: number): number {
 function numberSetting(value: string, fallback: number): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function inferenceHeaders(env: Env): Headers {
+  const headers = new Headers({ Authorization: `Bearer ${env.INFERENCE_API_TOKEN}` })
+  if (env.INFERENCE_CF_ACCESS_CLIENT_ID) {
+    headers.set('CF-Access-Client-Id', env.INFERENCE_CF_ACCESS_CLIENT_ID)
+  }
+  if (env.INFERENCE_CF_ACCESS_CLIENT_SECRET) {
+    headers.set('CF-Access-Client-Secret', env.INFERENCE_CF_ACCESS_CLIENT_SECRET)
+  }
+  return headers
 }

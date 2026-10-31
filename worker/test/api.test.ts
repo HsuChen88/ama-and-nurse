@@ -89,14 +89,27 @@ describe('Worker API', () => {
     expect(urls).toHaveLength(5)
   })
 
-  it('uses the pending Taiwanese WAV and does not call Google TTS for caregiver', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  it('uses remote Taiwanese TTS for caregiver while preserving translated text', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
       if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
       if (url.includes('translation.googleapis.com')) {
         return jsonResponse({
           translations: [{ translatedText: '<span translate="no">阿嬤</span>哪裡痛？' }],
+        })
+      }
+      if (url.includes('/v1/tts')) {
+        const headers = new Headers(init?.headers)
+        expect(headers.get('Authorization')).toBe('Bearer inference-token')
+        expect(headers.get('CF-Access-Client-Id')).toBe('access-client-id')
+        expect(headers.get('CF-Access-Client-Secret')).toBe('access-client-secret')
+        expect(JSON.parse(init?.body as string)).toEqual({
+          text: '阿嬤哪裡痛？',
+          language: 'nan-TW',
+        })
+        return new Response(new Uint8Array([1, 2, 3]), {
+          headers: { 'Content-Type': 'audio/mpeg' },
         })
       }
       throw new Error(`Unexpected URL: ${url}`)
@@ -108,9 +121,54 @@ describe('Worker API', () => {
 
     expect(body.target_lang).toBe('nan-TW')
     expect(body.translated_text).toBe('阿嬤哪裡痛？')
+    expect(body.audio_mime).toBe('audio/mpeg')
+    expect(body.audio_url).toBe('data:audio/mpeg;base64,AQID')
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('texttospeech'))).toBe(false)
+  })
+
+  it('falls back to the pending tone when remote Taiwanese TTS fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
+      if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
+      if (url.includes('translation.googleapis.com')) {
+        return jsonResponse({ translations: [{ translatedText: '阿嬤哪裡痛？' }] })
+      }
+      if (url.includes('/v1/tts')) {
+        return jsonResponse({ error: { code: 'TTS_BACKEND_ERROR' } }, 502)
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
+    const body = (await response.json()) as Record<string, string>
+
+    expect(response.status).toBe(200)
+    expect(body.translated_text).toBe('阿嬤哪裡痛？')
     expect(body.audio_mime).toBe('audio/wav')
     expect(body.audio_url).toMatch(/^data:audio\/wav;base64,UklGR/)
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('texttospeech'))).toBe(false)
+  })
+
+  it('falls back to the pending tone when remote Taiwanese TTS times out', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
+      if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
+      if (url.includes('translation.googleapis.com')) {
+        return jsonResponse({ translations: [{ translatedText: '阿嬤哪裡痛？' }] })
+      }
+      if (url.includes('/v1/tts')) throw new DOMException('timed out', 'TimeoutError')
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
+    const body = (await response.json()) as Record<string, string>
+
+    expect(response.status).toBe(200)
+    expect(body.audio_mime).toBe('audio/wav')
+    expect(body.audio_url).toMatch(/^data:audio\/wav;base64,UklGR/)
   })
 
   it('retries TTS without speakingRate after INVALID_ARGUMENT', async () => {
@@ -215,7 +273,7 @@ describe('Worker API', () => {
         asr_id: 'remote',
         translate: 'google',
         tts_id: 'google',
-        tts_nan: 'pending',
+        tts_nan: 'remote',
       },
     })
 
