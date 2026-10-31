@@ -248,34 +248,21 @@ p {
   font-weight: 650;
 }
 
-.speaker-icon {
-  display: grid;
-  width: 54px;
-  height: 54px;
-  place-items: center;
-  border: 3px solid rgb(255 255 255 / 88%);
-  border-radius: 50%;
-  color: #fff;
-  font-size: 1.25rem;
-}
-
-.pulse-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #fff;
-  animation: pulse 1.25s infinite;
+.speaker-flag {
+  display: block;
+  width: 72px;
+  height: 48px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 2px solid rgb(255 255 255 / 85%);
+  border-radius: 7px;
+  box-shadow: 0 2px 7px rgb(20 12 8 / 28%);
 }
 
 .recording-time {
   font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
   font-weight: 850;
-}
-
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(255 255 255 / 65%); }
-  50% { box-shadow: 0 0 0 16px rgb(255 255 255 / 0%); }
 }
 
 .processing,

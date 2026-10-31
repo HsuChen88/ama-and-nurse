@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
+import { IndonesiaFlag, TaiwanFlag } from './components/flags'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
 import { appReducer, initialState } from './state/machine'
@@ -263,10 +264,9 @@ function App() {
               disabled={isDisabled}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
+              aria-label={`${label.title}，${isActive ? label.stop : label.hint}`}
             >
-              <span className="speaker-icon" aria-hidden="true">
-                {isActive ? <span className="pulse-dot" /> : '●'}
-              </span>
+              {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
               <strong>{label.title}</strong>
               {isActive ? (
                 <>
