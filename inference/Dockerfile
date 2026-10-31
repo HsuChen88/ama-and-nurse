@@ -2,6 +2,10 @@ FROM ghcr.io/astral-sh/uv:0.12.3 AS uv
 
 FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 
+# The GPU server runs driver 535 (CUDA 12.2). CUDA 12.x minor-version compatibility
+# lets this 12.8 runtime run on it, so skip the container toolkit's cuda>=12.8 check.
+ENV NVIDIA_DISABLE_REQUIRE=1
+
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
