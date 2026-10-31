@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { translateAudio } from './client'
+import { handleAccessRedirect, translateAudio } from './client'
 
 describe('translateAudio', () => {
   afterEach(() => {
@@ -33,6 +33,9 @@ describe('translateAudio', () => {
     vi.useFakeTimers()
     const response = {
       ok: true,
+      type: 'basic',
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
       json: vi.fn().mockResolvedValue({ id: 'result-1' }),
     } as unknown as Response
     const fetchMock = vi.fn().mockResolvedValue(response)
@@ -42,5 +45,44 @@ describe('translateAudio', () => {
       id: 'result-1',
     })
     expect(vi.getTimerCount()).toBe(0)
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe('manual')
+  })
+
+  it('reloads for an opaque Access login redirect', () => {
+    const reload = vi.fn()
+    const response = {
+      type: 'opaqueredirect',
+      status: 0,
+      headers: new Headers(),
+    } as Response
+
+    expect(() => handleAccessRedirect(response, reload)).toThrowError(
+      expect.objectContaining({ code: 'AUTH_REQUIRED' }),
+    )
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it.each([401, 403])('reloads for a non-JSON Access %s response', (status) => {
+    const reload = vi.fn()
+    const response = new Response('<html>Access login</html>', {
+      status,
+      headers: { 'Content-Type': 'text/html' },
+    })
+
+    expect(() => handleAccessRedirect(response, reload)).toThrowError(
+      expect.objectContaining({ code: 'AUTH_REQUIRED' }),
+    )
+    expect(reload).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a JSON API 403 in the normal error path', () => {
+    const reload = vi.fn()
+    const response = Response.json(
+      { error: { code: 'FORBIDDEN', message: 'Forbidden' } },
+      { status: 403 },
+    )
+
+    expect(() => handleAccessRedirect(response, reload)).not.toThrow()
+    expect(reload).not.toHaveBeenCalled()
   })
 })

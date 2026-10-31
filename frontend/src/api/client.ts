@@ -28,6 +28,7 @@ export async function translateAudio(
     response = await fetch(`${API_BASE}/api/translate`, {
       method: 'POST',
       body: formData,
+      redirect: 'manual',
       signal: controller.signal,
     })
   } catch {
@@ -35,6 +36,8 @@ export async function translateAudio(
   } finally {
     window.clearTimeout(timeout)
   }
+
+  handleAccessRedirect(response)
 
   if (!response.ok) {
     let body: ApiErrorBody | undefined
@@ -47,6 +50,20 @@ export async function translateAudio(
   }
 
   return (await response.json()) as TranslationResult
+}
+
+export function handleAccessRedirect(
+  response: Response,
+  reload: () => void = () => window.location.reload(),
+): void {
+  const contentType = response.headers.get('content-type') ?? ''
+  const accessResponse =
+    response.type === 'opaqueredirect' ||
+    ([401, 403].includes(response.status) && !contentType.toLowerCase().includes('application/json'))
+  if (!accessResponse) return
+
+  reload()
+  throw new ApiError('AUTH_REQUIRED', 'Authentication is required')
 }
 
 export function resolveAudioUrl(url: string): string {
