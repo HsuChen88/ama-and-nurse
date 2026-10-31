@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
 
+import numpy as np
 from inference_service.config import Settings
 from inference_service.manager import AsrManager
 
@@ -12,7 +12,7 @@ class BlockingEngine:
         self.entered = threading.Event()
         self.release = threading.Event()
 
-    def transcribe(self, _: Path, __: str) -> str:
+    def transcribe(self, _: np.ndarray, __: str) -> str:
         self.entered.set()
         self.release.wait(timeout=5)
         return "done"
@@ -22,7 +22,7 @@ def test_queue_rejects_above_configured_limit():
     settings = Settings("t", "cpu", "int8", "nan", "id", (), 1)
     engine = BlockingEngine()
     slot = AsrManager(settings, lambda _: engine).slot("nan-TW")
-    audio = Path("unused.wav")
+    audio = np.zeros(16_000, dtype=np.float32)
 
     assert slot.reserve()
     worker = threading.Thread(

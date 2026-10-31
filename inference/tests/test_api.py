@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
-from conftest import make_wav
+from conftest import make_audio
 
 
 def post_asr(
@@ -11,8 +12,11 @@ def post_asr(
     *,
     audio: bytes | None = None,
     language: str = "nan-TW",
+    filename: str = "speech.wav",
+    content_type: str = "audio/wav",
 ):
-    files = {"audio": ("speech.wav", audio or make_wav(), "audio/wav")}
+    payload = make_audio("wav") if audio is None else audio
+    files = {"audio": (filename, payload, content_type)}
     return client.post(
         "/v1/asr", files=files, data={"language": language}, headers=headers
     )
@@ -44,18 +48,42 @@ def test_authentication_precedes_multipart_validation(client: TestClient):
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_asr_transcribes_valid_wav(
-    client: TestClient, auth_headers: dict[str, str]
+@pytest.mark.parametrize(
+    ("extension", "content_type"),
+    [
+        ("webm", "audio/webm"),
+        ("m4a", "audio/mp4"),
+        ("ogg", "audio/ogg"),
+        ("wav", "audio/wav"),
+    ],
+)
+def test_asr_decodes_browser_audio_formats(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    fake_engine,
+    extension: str,
+    content_type: str,
 ):
-    response = post_asr(client, auth_headers)
+    response = post_asr(
+        client,
+        auth_headers,
+        audio=make_audio(extension),
+        filename=f"speech.{extension}",
+        content_type=content_type,
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["text"] == "測試結果"
     assert body["language"] == "nan-TW"
     assert body["model"] == "fake/breeze"
-    assert body["duration_ms"] == 100
+    assert body["duration_ms"] == pytest.approx(1000, abs=50)
     assert isinstance(body["inference_ms"], int)
+    decoded, language = fake_engine.calls[-1]
+    assert decoded.dtype.name == "float32"
+    assert decoded.ndim == 1
+    assert len(decoded) == pytest.approx(16_000, abs=800)
+    assert language == "nan-TW"
 
 
 def test_asr_rejects_invalid_language(
@@ -70,19 +98,48 @@ def test_asr_rejects_invalid_language(
 def test_asr_rejects_unreadable_audio(
     client: TestClient, auth_headers: dict[str, str]
 ):
-    for audio in (b"not a wav", make_wav()[:-10]):
-        response = post_asr(client, auth_headers, audio=audio)
-        assert response.status_code == 422
-        assert response.json()["error"]["code"] == "INVALID_AUDIO"
+    response = post_asr(client, auth_headers, audio=b"not audio")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_AUDIO"
 
 
-def test_asr_rejects_non_16khz_or_stereo(
+def test_asr_rejects_missing_audio(
     client: TestClient, auth_headers: dict[str, str]
 ):
-    for wav in (make_wav(sample_rate=8_000), make_wav(channels=2)):
-        response = post_asr(client, auth_headers, audio=wav)
-        assert response.status_code == 422
-        assert response.json()["error"]["code"] == "INVALID_AUDIO"
+    response = client.post(
+        "/v1/asr", data={"language": "id"}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_AUDIO"
+
+
+@pytest.mark.parametrize(
+    ("duration", "code"),
+    [(0.2, "AUDIO_TOO_SHORT"), (30.1, "AUDIO_TOO_LONG")],
+)
+def test_asr_rejects_out_of_range_duration(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    duration: float,
+    code: str,
+):
+    response = post_asr(
+        client, auth_headers, audio=make_audio("wav", duration_seconds=duration)
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == code
+
+
+def test_asr_rejects_payload_over_10_mb(
+    client: TestClient, auth_headers: dict[str, str]
+):
+    response = post_asr(client, auth_headers, audio=b"x" * (10 * 1024 * 1024 + 1))
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"
 
 
 def test_tts_requires_auth_then_returns_not_implemented(
