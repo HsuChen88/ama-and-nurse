@@ -78,4 +78,30 @@ describe('appReducer', () => {
     expect(recording.activeSpeaker).toBe('caregiver')
     expect(recording.errorCode).toBeNull()
   })
+
+  it('follows checking → required → activating → activated', () => {
+    const required = appReducer(initialState, { type: 'SESSION_LOADED', activated: false })
+    expect(required.activationStatus).toBe('required')
+
+    const activating = appReducer(required, { type: 'START_ACTIVATION' })
+    expect(activating.activationStatus).toBe('activating')
+
+    const activated = appReducer(activating, { type: 'ACTIVATION_SUCCESS' })
+    expect(activated.activationStatus).toBe('activated')
+    expect(activated.activationError).toBeNull()
+  })
+
+  it('returns to activation when an API reports NOT_ACTIVATED', () => {
+    const active = {
+      ...initialState,
+      activationStatus: 'activated' as const,
+      status: 'uploading' as const,
+      activeSpeaker: 'ama' as const,
+    }
+    const required = appReducer(active, { type: 'NOT_ACTIVATED' })
+
+    expect(required.activationStatus).toBe('required')
+    expect(required.status).toBe('idle')
+    expect(required.activeSpeaker).toBeNull()
+  })
 })

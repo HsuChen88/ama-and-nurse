@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { handleAccessRedirect, translateAudio } from './client'
+import { activateDevice, getSession, translateAudio } from './client'
 
 describe('translateAudio', () => {
   afterEach(() => {
@@ -31,13 +31,7 @@ describe('translateAudio', () => {
 
   it('clears the timeout after a successful response', async () => {
     vi.useFakeTimers()
-    const response = {
-      ok: true,
-      type: 'basic',
-      status: 200,
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      json: vi.fn().mockResolvedValue({ id: 'result-1' }),
-    } as unknown as Response
+    const response = Response.json({ id: 'result-1' })
     const fetchMock = vi.fn().mockResolvedValue(response)
     vi.stubGlobal('fetch', fetchMock)
 
@@ -45,44 +39,42 @@ describe('translateAudio', () => {
       id: 'result-1',
     })
     expect(vi.getTimerCount()).toBe(0)
-    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBe('manual')
+    expect(fetchMock.mock.calls[0]?.[1]?.redirect).toBeUndefined()
   })
 
-  it('reloads for an opaque Access login redirect', () => {
-    const reload = vi.fn()
-    const response = {
-      type: 'opaqueredirect',
-      status: 0,
-      headers: new Headers(),
-    } as Response
+  it('loads the device session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ activated: false }))
+    vi.stubGlobal('fetch', fetchMock)
 
-    expect(() => handleAccessRedirect(response, reload)).toThrowError(
-      expect.objectContaining({ code: 'AUTH_REQUIRED' }),
-    )
-    expect(reload).toHaveBeenCalledOnce()
+    await expect(getSession()).resolves.toEqual({ activated: false })
+    expect(fetchMock).toHaveBeenCalledWith('/api/session', undefined)
   })
 
-  it.each([401, 403])('reloads for a non-JSON Access %s response', (status) => {
-    const reload = vi.fn()
-    const response = new Response('<html>Access login</html>', {
-      status,
-      headers: { 'Content-Type': 'text/html' },
+  it('activates with the entered invite code', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ activated: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(activateDevice('ABCD-EFGH')).resolves.toEqual({ activated: true })
+    expect(fetchMock).toHaveBeenCalledWith('/api/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'ABCD-EFGH' }),
     })
-
-    expect(() => handleAccessRedirect(response, reload)).toThrowError(
-      expect.objectContaining({ code: 'AUTH_REQUIRED' }),
-    )
-    expect(reload).toHaveBeenCalledOnce()
   })
 
-  it('keeps a JSON API 403 in the normal error path', () => {
-    const reload = vi.fn()
-    const response = Response.json(
-      { error: { code: 'FORBIDDEN', message: 'Forbidden' } },
-      { status: 403 },
+  it('preserves NOT_ACTIVATED as an API error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        Response.json(
+          { error: { code: 'NOT_ACTIVATED', message: 'Device is not activated' } },
+          { status: 401 },
+        ),
+      ),
     )
 
-    expect(() => handleAccessRedirect(response, reload)).not.toThrow()
-    expect(reload).not.toHaveBeenCalled()
+    await expect(
+      translateAudio(new Blob(['audio']), 'recording.webm', 'ama'),
+    ).rejects.toMatchObject({ code: 'NOT_ACTIVATED' })
   })
 })

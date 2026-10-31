@@ -88,6 +88,117 @@ p {
   font-weight: 650;
 }
 
+.activation-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.activation-card,
+.activation-checking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ddcdb4;
+  border-radius: 30px;
+  padding: clamp(26px, 7vw, 48px) 18px;
+  background: #fffdf7;
+  box-shadow: 0 10px 28px rgb(69 44 28 / 12%);
+  text-align: center;
+}
+
+.activation-checking {
+  min-height: 320px;
+  gap: 12px;
+  font-size: 1.15rem;
+}
+
+.activation-checking strong {
+  font-size: 1.5rem;
+}
+
+.activation-icon {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #08787e;
+  font-size: 2.1rem;
+  font-weight: 900;
+}
+
+.activation-card h2 {
+  margin-top: 20px;
+  font-size: clamp(1.75rem, 7vw, 2.4rem);
+}
+
+.activation-subtitle {
+  margin-top: 8px;
+  color: #67534b;
+  font-size: clamp(1.15rem, 4.5vw, 1.45rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.activation-error {
+  width: 100%;
+  margin-top: 20px;
+  border: 3px solid #a31f1a;
+  border-radius: 18px;
+  padding: 13px;
+  color: #7b1713;
+  background: #fff0ed;
+  font-size: 1.05rem;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.activation-card form {
+  display: grid;
+  width: min(100%, 500px);
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.activation-card label {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.activation-card input {
+  width: 100%;
+  min-height: 82px;
+  border: 4px solid #725b4d;
+  border-radius: 20px;
+  padding: 10px 14px;
+  color: #251813;
+  background: #fff;
+  font: inherit;
+  font-size: clamp(2rem, 11vw, 3rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.activation-card input:focus {
+  border-color: #1468c3;
+  outline: 3px solid rgb(20 104 195 / 25%);
+}
+
+.activation-card button {
+  border: 0;
+  border-radius: 20px;
+  padding: 14px;
+  color: #fff;
+  background: #8f2e25;
+  font-size: clamp(1.35rem, 6vw, 1.8rem);
+  font-weight: 900;
+  box-shadow: 0 6px 0 #5e1b16;
+}
+
 .speaker-actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -406,6 +517,15 @@ p {
   color: #fff;
   background: #3d2a22;
   font-size: 1.35rem;
+}
+
+.privacy-note {
+  margin-top: 30px;
+  padding: 18px 8px 0;
+  color: #735f56;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: center;
 }
 
 @media (min-width: 700px) {

@@ -30,7 +30,7 @@ export default defineConfig(({ command }) => ({
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/cdn-cgi\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/join\//, /^\/cdn-cgi\//],
         globPatterns: ['**/*.{js,css,html,svg}'],
       },
       devOptions: { enabled: true },

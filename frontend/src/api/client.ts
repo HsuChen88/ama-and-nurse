@@ -10,6 +10,19 @@ export class ApiError extends Error {
   }
 }
 
+export async function getSession(): Promise<{ activated: boolean }> {
+  if (USE_MOCK) return { activated: true }
+  return requestJson<{ activated: boolean }>(`${API_BASE}/api/session`)
+}
+
+export async function activateDevice(code: string): Promise<{ activated: true }> {
+  return requestJson<{ activated: true }>(`${API_BASE}/api/activate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+}
+
 export async function translateAudio(
   audio: Blob,
   filename: string,
@@ -28,7 +41,6 @@ export async function translateAudio(
     response = await fetch(`${API_BASE}/api/translate`, {
       method: 'POST',
       body: formData,
-      redirect: 'manual',
       signal: controller.signal,
     })
   } catch {
@@ -37,33 +49,31 @@ export async function translateAudio(
     window.clearTimeout(timeout)
   }
 
-  handleAccessRedirect(response)
-
-  if (!response.ok) {
-    let body: ApiErrorBody | undefined
-    try {
-      body = (await response.json()) as ApiErrorBody
-    } catch {
-      // An invalid error body is handled as a generic server error.
-    }
-    throw new ApiError(body?.error.code ?? 'UNKNOWN_ERROR', body?.error.message ?? response.statusText)
-  }
+  await throwApiError(response)
 
   return (await response.json()) as TranslationResult
 }
 
-export function handleAccessRedirect(
-  response: Response,
-  reload: () => void = () => window.location.reload(),
-): void {
-  const contentType = response.headers.get('content-type') ?? ''
-  const accessResponse =
-    response.type === 'opaqueredirect' ||
-    ([401, 403].includes(response.status) && !contentType.toLowerCase().includes('application/json'))
-  if (!accessResponse) return
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(url, init)
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 'Unable to reach server')
+  }
+  await throwApiError(response)
+  return (await response.json()) as T
+}
 
-  reload()
-  throw new ApiError('AUTH_REQUIRED', 'Authentication is required')
+async function throwApiError(response: Response): Promise<void> {
+  if (response.ok) return
+  let body: ApiErrorBody | undefined
+  try {
+    body = (await response.clone().json()) as ApiErrorBody
+  } catch {
+    // An invalid error body is handled as a generic server error.
+  }
+  throw new ApiError(body?.error.code ?? 'UNKNOWN_ERROR', body?.error.message ?? response.statusText)
 }
 
 export function resolveAudioUrl(url: string): string {

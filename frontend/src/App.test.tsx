@@ -1,0 +1,55 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import App, { formatInviteInput } from './App'
+
+const apiMocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  activateDevice: vi.fn(),
+}))
+
+vi.mock('./api/client', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./api/client')>()
+  return {
+    ...original,
+    getSession: apiMocks.getSession,
+    activateDevice: apiMocks.activateDevice,
+  }
+})
+
+describe('device activation UI', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/')
+    apiMocks.getSession.mockReset().mockResolvedValue({ activated: false })
+    apiMocks.activateDevice.mockReset().mockResolvedValue({ activated: true })
+  })
+
+  afterEach(() => cleanup())
+
+  it('formats pasted and typed invite codes', () => {
+    expect(formatInviteInput(' abcd efgh ')).toBe('ABCD-EFGH')
+    expect(formatInviteInput('abcd-ef')).toBe('ABCD-EF')
+  })
+
+  it('replaces the app with activation and enters the main screen after success', async () => {
+    render(<App />)
+    expect(await screen.findByText('請家人輸入邀請碼')).toBeTruthy()
+    expect(screen.queryByText('阿罵講台語')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('邀請碼 / Kode undangan'), {
+      target: { value: 'abcd efgh' },
+    })
+    expect(screen.getByLabelText('邀請碼 / Kode undangan')).toHaveProperty('value', 'ABCD-EFGH')
+    fireEvent.click(screen.getByRole('button', { name: '啟用 / Aktifkan' }))
+
+    await waitFor(() => expect(apiMocks.activateDevice).toHaveBeenCalledWith('ABCD-EFGH'))
+    expect(await screen.findByText('阿罵講台語')).toBeTruthy()
+  })
+
+  it('shows the bilingual invalid-link message from the URL', async () => {
+    window.history.replaceState(null, '', '/?invite=invalid')
+    render(<App />)
+
+    expect(await screen.findByText(/邀請連結無效或已撤銷/)).toBeTruthy()
+    expect(screen.getByText(/Tautan undangan tidak valid atau sudah dicabut/)).toBeTruthy()
+  })
+})

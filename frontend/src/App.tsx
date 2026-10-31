@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { ApiError, resolveAudioUrl, translateAudio } from './api/client'
+import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
+import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
@@ -24,6 +24,10 @@ const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: strin
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState)
   const [isStarting, setIsStarting] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [invalidInvite, setInvalidInvite] = useState(
+    () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
+  )
   const recorderRef = useRef(new AudioRecorder())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
@@ -66,7 +70,8 @@ function App() {
       const code = error instanceof ApiError || error instanceof RecordingError
         ? error.code
         : 'UNKNOWN_ERROR'
-      dispatch({ type: 'FAIL', code })
+      if (code === 'NOT_ACTIVATED') dispatch({ type: 'NOT_ACTIVATED' })
+      else dispatch({ type: 'FAIL', code })
     } finally {
       stoppingRef.current = false
     }
@@ -130,6 +135,90 @@ function App() {
     audioRef.current?.pause()
   }, [])
 
+  useEffect(() => {
+    let active = true
+    void getSession()
+      .then((session) => {
+        if (active) dispatch({ type: 'SESSION_LOADED', activated: session.activated })
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        const code = error instanceof ApiError ? error.code : 'NETWORK_ERROR'
+        dispatch({ type: 'ACTIVATION_FAILED', code })
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const submitActivation = async (event: FormEvent) => {
+    event.preventDefault()
+    dispatch({ type: 'START_ACTIVATION' })
+    try {
+      await activateDevice(inviteCode)
+      setInvalidInvite(false)
+      dispatch({ type: 'ACTIVATION_SUCCESS' })
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : 'UNKNOWN_ERROR'
+      dispatch({ type: 'ACTIVATION_FAILED', code })
+    }
+  }
+
+  if (state.activationStatus !== 'activated') {
+    return (
+      <main className="app-shell activation-shell">
+        <AppHeader />
+        {state.activationStatus === 'checking' ? (
+          <section className="activation-checking" role="status">
+            <span className="loader" aria-hidden="true" />
+            <strong>正在確認裝置</strong>
+            <span>Memeriksa perangkat</span>
+          </section>
+        ) : (
+          <section className="activation-card">
+            <div className="activation-icon" aria-hidden="true">✓</div>
+            <h2>請家人輸入邀請碼</h2>
+            <p className="activation-subtitle">Minta keluarga memasukkan kode undangan</p>
+            {invalidInvite && (
+              <p className="activation-error" role="alert">
+                邀請連結無效或已撤銷<br />
+                Tautan undangan tidak valid atau sudah dicabut
+              </p>
+            )}
+            {!invalidInvite && state.activationError === 'INVALID_CODE' && (
+              <p className="activation-error" role="alert">
+                邀請碼無效或已撤銷<br />
+                Kode undangan tidak valid atau sudah dicabut
+              </p>
+            )}
+            {state.activationError && state.activationError !== 'INVALID_CODE' && (
+              <p className="activation-error" role="alert">
+                無法連線，請稍後再試<br />Tidak dapat terhubung, silakan coba lagi
+              </p>
+            )}
+            <form onSubmit={(event) => void submitActivation(event)}>
+              <label htmlFor="invite-code">邀請碼 / Kode undangan</label>
+              <input
+                id="invite-code"
+                value={inviteCode}
+                onChange={(event) => setInviteCode(formatInviteInput(event.target.value))}
+                placeholder="ABCD-EFGH"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="text"
+                disabled={state.activationStatus === 'activating'}
+              />
+              <button type="submit" disabled={state.activationStatus === 'activating' || inviteCode.length < 8}>
+                {state.activationStatus === 'activating' ? '啟用中… / Mengaktifkan…' : '啟用 / Aktifkan'}
+              </button>
+            </form>
+          </section>
+        )}
+      </main>
+    )
+  }
+
   return (
     <main className="app-shell">
       <audio
@@ -141,13 +230,7 @@ function App() {
           if (isResultAudioRef.current) dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
         }}
       />
-      <header className="app-header">
-        <div className="brand-mark" aria-hidden="true">譯</div>
-        <div>
-          <h1>阿罵的翻譯機</h1>
-          <p>台語 <span aria-hidden="true">↔</span> Bahasa Indonesia</p>
-        </div>
-      </header>
+      <AppHeader />
 
       {state.status === 'error' && (
         <section className="notice error-notice" role="alert">
@@ -263,8 +346,29 @@ function App() {
           </ol>
         )}
       </section>
+      <footer className="privacy-note">
+        語音僅用於即時翻譯，本服務不保存錄音<br />
+        Suara hanya dipakai untuk terjemahan langsung dan tidak disimpan
+      </footer>
     </main>
   )
+}
+
+function AppHeader() {
+  return (
+    <header className="app-header">
+      <div className="brand-mark" aria-hidden="true">譯</div>
+      <div>
+        <h1>阿罵的翻譯機</h1>
+        <p>台語 <span aria-hidden="true">↔</span> Bahasa Indonesia</p>
+      </div>
+    </header>
+  )
+}
+
+export function formatInviteInput(value: string): string {
+  const compact = value.toUpperCase().replace(/[\s-]/g, '').slice(0, 8)
+  return compact.length > 4 ? `${compact.slice(0, 4)}-${compact.slice(4)}` : compact
 }
 
 function formatTime(seconds: number): string {
