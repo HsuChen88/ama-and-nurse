@@ -24,11 +24,15 @@ COPY docker/prepare_build_assets.py /tmp/build/prepare_build_assets.py
 COPY docker/tts_long.py /opt/GPT-SoVITS/tts_long.py
 COPY docker/entrypoint.py /usr/local/bin/taigi-poc-entrypoint
 
+# Separate layer so a later failure does not re-download the ~2.5 GB torch wheels.
 RUN python -m pip install --no-cache-dir cmake==3.31.6 imageio-ffmpeg==0.6.0 \
     && python -m pip install --no-cache-dir \
       torch==2.5.1+cu121 torchaudio==2.5.1+cu121 \
-      --index-url https://download.pytorch.org/whl/cu121 \
-    && sed '/^torchaudio$/d' /opt/GPT-SoVITS/requirements.txt \
+      --index-url https://download.pytorch.org/whl/cu121
+
+# Upstream forces `--no-binary=opencc`, whose source build fails here; the
+# prebuilt manylinux wheel works, so drop that line along with torchaudio.
+RUN sed -e '/^torchaudio$/d' -e '/^--no-binary/d' /opt/GPT-SoVITS/requirements.txt \
       > /tmp/requirements-no-torchaudio.txt \
     && python -m pip install --no-cache-dir \
       -r /tmp/requirements-no-torchaudio.txt \
