@@ -12,13 +12,16 @@
 
 html {
   background: #fff8e8;
+  overflow-x: clip;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  max-width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 10% 0%, rgb(255 218 139 / 38%), transparent 32rem),
     #fff8e8;
@@ -43,6 +46,8 @@ button:disabled {
 
 .app-shell {
   width: min(100%, 760px);
+  min-width: 0;
+  max-width: 100%;
   min-height: 100dvh;
   margin: 0 auto;
   padding: max(18px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
@@ -199,13 +204,18 @@ p {
 
 .speaker-actions {
   display: grid;
-  grid-template-columns: 1fr;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
 .speaker-button {
   position: relative;
   display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: clamp(172px, 24dvh, 230px);
   flex-direction: column;
   align-items: center;
@@ -216,6 +226,7 @@ p {
   border-radius: 30px;
   padding: 20px 18px;
   color: #fff;
+  white-space: normal;
   box-shadow: 0 9px 0 rgb(44 25 18 / 17%), 0 14px 28px rgb(44 25 18 / 18%);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
@@ -239,15 +250,38 @@ p {
 }
 
 .speaker-button strong {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.3em;
+  align-items: center;
+  justify-content: center;
   max-width: 100%;
-  font-size: clamp(1.7rem, 7vw, 2.35rem);
+  font-size: clamp(1.6rem, 6.5vw, 2.1rem);
   line-height: 1.14;
 }
 
+.speaker-button strong span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: normal;
+  text-wrap: balance;
+  word-break: normal;
+}
+
 .speaker-prompt {
-  font-size: clamp(1.45rem, 6vw, 2rem);
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: clamp(1.35rem, 5.5vw, 1.8rem);
   font-weight: 850;
   line-height: 1.2;
+  overflow-wrap: normal;
+  text-wrap: balance;
+  word-break: normal;
 }
 
 .speaker-flag {
@@ -417,18 +451,26 @@ p {
 }
 
 .history-section {
+  min-width: 0;
   margin-top: 34px;
 }
 
 .section-heading {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .section-heading h2 {
+  min-width: 0;
+  flex: 1;
   font-size: 1.45rem;
+}
+
+.section-heading button {
+  flex: 0 0 auto;
 }
 
 .section-heading h2 small {
@@ -522,7 +564,7 @@ p {
 
 @media (min-width: 700px) {
   .speaker-actions {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

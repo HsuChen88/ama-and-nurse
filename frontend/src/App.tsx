@@ -271,7 +271,7 @@ function App() {
               aria-label={`${label.title}，${isActive ? label.stop : label.hint}`}
             >
               {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
-              <strong>{label.title}</strong>
+              <strong><span>{label.title}</span></strong>
               {isActive ? (
                 <>
                   <span className="recording-time">{formatTime(state.elapsedSeconds)}</span>
