@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-30",
   "routes": [
     {
-      "pattern": "ama.ama-ama.com",
+      "pattern": "app.ama-ama.com",
       "custom_domain": true
     }
   ],

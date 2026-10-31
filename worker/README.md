@@ -1,7 +1,7 @@
 # Cloudflare Worker
 
 `ama-translator` 是正式 API 後端與前端靜態資產入口。Cloudflare Access 保護
-`ama.ama-ama.com`；`/api/*` 由 Worker 執行，其餘路徑由 `../frontend/dist`
+`app.ama-ama.com`；`/api/*` 由 Worker 執行，其餘路徑由 `../frontend/dist`
 提供並使用 SPA fallback。
 
 翻譯流程：瀏覽器原始錄音 → titan inference ASR → Google Translation v3 →
@@ -63,7 +63,7 @@ build 成功後執行 Wrangler 部署。部署、登入與 secret 寫入應由�
 
 ## Cloudflare Access
 
-在 Zero Trust 建立保護 `ama.ama-ama.com` 的 self-hosted application，家人以
+在 Zero Trust 建立保護 `app.ama-ama.com` 的 self-hosted application，家人以
 Access policy 登入。另為 `inference.ama-ama.com` 建立 service-token policy，
 並把 Client ID / Client Secret 存入上述 Worker secrets。前端遇到 Access session
 失效造成的登入 redirect 或非 JSON 401/403 時，會重新載入頁面以啟動登入流程。
