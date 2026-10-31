@@ -6,6 +6,12 @@ FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
 # lets this 12.8 runtime run on it, so skip the container toolkit's cuda>=12.8 check.
 ENV NVIDIA_DISABLE_REQUIRE=1
 
+# Remove the forward-compat driver libs: the container toolkit would otherwise load
+# them on older drivers, and forward compatibility only works on datacenter GPUs
+# (fails on TITAN RTX). Minor-version compatibility uses the host driver instead.
+RUN rm -rf /usr/local/cuda/compat /usr/local/cuda-*/compat /etc/ld.so.conf.d/*compat* \
+    && ldconfig
+
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
