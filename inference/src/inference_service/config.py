@@ -15,6 +15,8 @@ class Settings:
     id_model: str
     preload: tuple[str, ...]
     max_queue: int
+    tts_url: str = "http://taigi-tts:8002"
+    tts_timeout_seconds: float = 30.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,6 +50,19 @@ class Settings:
         if max_queue < 0:
             raise RuntimeError("INFERENCE_MAX_QUEUE must be non-negative")
 
+        try:
+            tts_timeout_seconds = float(
+                os.getenv("TAIGI_TTS_TIMEOUT_SECONDS", "30")
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                "TAIGI_TTS_TIMEOUT_SECONDS must be a number"
+            ) from exc
+        if tts_timeout_seconds <= 0:
+            raise RuntimeError(
+                "TAIGI_TTS_TIMEOUT_SECONDS must be greater than zero"
+            )
+
         return cls(
             api_token=api_token,
             device=device,
@@ -60,6 +75,8 @@ class Settings:
             ).strip(),
             preload=preload,
             max_queue=max_queue,
+            tts_url=os.getenv("TAIGI_TTS_URL", "http://taigi-tts:8002").strip(),
+            tts_timeout_seconds=tts_timeout_seconds,
         )
 
     @property

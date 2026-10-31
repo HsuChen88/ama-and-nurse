@@ -4,8 +4,8 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
+from .audio import AudioArray
 from .config import Settings
 from .engine import AsrEngine, EngineConfig, FasterWhisperEngine
 
@@ -45,12 +45,12 @@ class ModelSlot:
             self._in_flight += 1
             return True
 
-    def transcribe_reserved(self, audio_path: Path, language: str) -> Transcription:
+    def transcribe_reserved(self, audio: AudioArray, language: str) -> Transcription:
         try:
             with self._inference_lock:
                 started = time.perf_counter()
                 engine = self._ensure_loaded()
-                text = engine.transcribe(audio_path, language)
+                text = engine.transcribe(audio, language)
                 elapsed_ms = round((time.perf_counter() - started) * 1000)
                 return Transcription(text=text, inference_ms=elapsed_ms)
         finally:

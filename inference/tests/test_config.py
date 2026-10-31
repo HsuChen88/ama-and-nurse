@@ -19,6 +19,8 @@ def test_cpu_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ASR_ID_MODEL", "custom/id")
     monkeypatch.setenv("INFERENCE_PRELOAD", "nan-TW,id")
     monkeypatch.setenv("INFERENCE_MAX_QUEUE", "2")
+    monkeypatch.setenv("TAIGI_TTS_URL", "http://tts.internal:9000")
+    monkeypatch.setenv("TAIGI_TTS_TIMEOUT_SECONDS", "12.5")
 
     settings = Settings.from_env()
 
@@ -26,6 +28,8 @@ def test_cpu_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch):
     assert settings.models == {"nan-TW": "custom/nan", "id": "custom/id"}
     assert settings.preload == ("nan-TW", "id")
     assert settings.max_queue == 2
+    assert settings.tts_url == "http://tts.internal:9000"
+    assert settings.tts_timeout_seconds == 12.5
 
 
 def test_cuda_defaults_to_float16(monkeypatch: pytest.MonkeyPatch):
@@ -42,4 +46,16 @@ def test_invalid_preload_is_rejected(monkeypatch: pytest.MonkeyPatch, value: str
     monkeypatch.setenv("INFERENCE_PRELOAD", value)
 
     with pytest.raises(RuntimeError, match="invalid languages"):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize("value", ["zero", "0", "-1"])
+def test_invalid_tts_timeout_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+):
+    monkeypatch.setenv("INFERENCE_API_TOKEN", "secret")
+    monkeypatch.setenv("INFERENCE_DEVICE", "cpu")
+    monkeypatch.setenv("TAIGI_TTS_TIMEOUT_SECONDS", value)
+    with pytest.raises(RuntimeError, match="TAIGI_TTS_TIMEOUT_SECONDS"):
         Settings.from_env()

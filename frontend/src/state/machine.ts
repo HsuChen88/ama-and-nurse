@@ -1,6 +1,7 @@
 import type { Conversation, Speaker } from '../types'
 
 export type Status = 'idle' | 'recording' | 'uploading' | 'playing' | 'error'
+export type ActivationStatus = 'checking' | 'required' | 'activating' | 'activated'
 
 export interface AppState {
   status: Status
@@ -9,6 +10,8 @@ export interface AppState {
   conversations: Conversation[]
   errorCode: string | null
   autoplayBlocked: boolean
+  activationStatus: ActivationStatus
+  activationError: string | null
 }
 
 export const initialState: AppState = {
@@ -18,6 +21,8 @@ export const initialState: AppState = {
   conversations: [],
   errorCode: null,
   autoplayBlocked: false,
+  activationStatus: 'checking',
+  activationError: null,
 }
 
 export type AppAction =
@@ -31,6 +36,11 @@ export type AppAction =
   | { type: 'FAIL'; code: string }
   | { type: 'DISMISS_ERROR' }
   | { type: 'CLEAR_HISTORY' }
+  | { type: 'SESSION_LOADED'; activated: boolean }
+  | { type: 'START_ACTIVATION' }
+  | { type: 'ACTIVATION_SUCCESS' }
+  | { type: 'ACTIVATION_FAILED'; code: string }
+  | { type: 'NOT_ACTIVATED' }
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -80,6 +90,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, status: 'idle', errorCode: null }
     case 'CLEAR_HISTORY':
       return { ...state, conversations: [], autoplayBlocked: false }
+    case 'SESSION_LOADED':
+      return {
+        ...state,
+        activationStatus: action.activated ? 'activated' : 'required',
+        activationError: null,
+      }
+    case 'START_ACTIVATION':
+      return { ...state, activationStatus: 'activating', activationError: null }
+    case 'ACTIVATION_SUCCESS':
+      return { ...state, activationStatus: 'activated', activationError: null }
+    case 'ACTIVATION_FAILED':
+      return { ...state, activationStatus: 'required', activationError: action.code }
+    case 'NOT_ACTIVATED':
+      return {
+        ...state,
+        status: 'idle',
+        activeSpeaker: null,
+        elapsedSeconds: 0,
+        errorCode: null,
+        activationStatus: 'required',
+        activationError: null,
+      }
     default:
       return state
   }

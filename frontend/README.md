@@ -58,3 +58,29 @@ pnpm test
 pnpm lint
 pnpm build
 ```
+
+### 手機窄版面手動驗收
+
+使用 mock 建置並啟動 production preview：
+
+```bash
+VITE_USE_MOCK=true pnpm build
+pnpm exec vite preview --host 127.0.0.1 --port 4173
+```
+
+另開終端，以 headless Chrome 分別擷取三個支援尺寸：
+
+```bash
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+"$CHROME" --headless=new --hide-scrollbars --ignore-certificate-errors --force-device-scale-factor=2 --window-size=360,740 --virtual-time-budget=4000 --screenshot=/tmp/ama-360x740.png https://127.0.0.1:4173/
+"$CHROME" --headless=new --hide-scrollbars --ignore-certificate-errors --force-device-scale-factor=2 --window-size=390,844 --virtual-time-budget=4000 --screenshot=/tmp/ama-390x844.png https://127.0.0.1:4173/
+"$CHROME" --headless=new --hide-scrollbars --ignore-certificate-errors --force-device-scale-factor=2 --window-size=430,932 --virtual-time-budget=4000 --screenshot=/tmp/ama-430x932.png https://127.0.0.1:4173/
+```
+
+macOS 的 headless Chrome 可能將小於 500px 的 layout viewport 提升為 500px；若截圖尺寸正確但內容像被裁切，請改用 DevTools Device Toolbar 明確設定上述 viewport 後再截圖。
+
+逐張確認兩顆說話按鈕等寬等高、印尼文只在單字間換行、「清除」完整可見，且頁面沒有水平捲動。也可在 DevTools Console 確認：
+
+```js
+document.documentElement.scrollWidth === document.documentElement.clientWidth
+```

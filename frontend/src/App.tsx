@@ -1,29 +1,36 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
-import { ApiError, resolveAudioUrl, translateAudio } from './api/client'
+import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
+import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
+import { vibrateRecordingStart, vibrateRecordingStop } from './audio/vibration'
+import { IndonesiaFlag, TaiwanFlag } from './components/flags'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
 import { appReducer, initialState } from './state/machine'
 import type { Conversation, Speaker } from './types'
 
 const MAX_RECORDING_SECONDS = 30
+const AUTO_STOP_MARGIN_MS = 500
 
 const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
   ama: {
-    title: '阿罵講台語',
-    hint: '按一下開始講',
-    stop: '再按一下結束',
+    title: '說台語',
+    hint: '按一下開始',
+    stop: '結束再按一下',
   },
   caregiver: {
-    title: 'Perawat bicara Bahasa Indonesia',
-    hint: 'Ketuk untuk mulai bicara',
-    stop: 'Ketuk lagi untuk selesai',
+    title: 'Bicara Bahasa Indonesia',
+    hint: 'Ketuk untuk mulai',
+    stop: 'Selesai? Ketuk lagi',
   },
 }
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState)
   const [isStarting, setIsStarting] = useState(false)
+  const [inviteCode, setInviteCode] = useState('')
+  const [invalidInvite, setInvalidInvite] = useState(
+    () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
+  )
   const recorderRef = useRef(new AudioRecorder())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
@@ -57,7 +64,9 @@ function App() {
 
     try {
       if (!speaker) throw new RecordingError('MIC_UNAVAILABLE')
-      const { blob, filename } = await recorderRef.current.stop()
+      const recording = recorderRef.current.stop()
+      vibrateRecordingStop()
+      const { blob, filename } = await recording
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
       dispatch({ type: 'UPLOAD_SUCCESS', conversation })
@@ -66,7 +75,8 @@ function App() {
       const code = error instanceof ApiError || error instanceof RecordingError
         ? error.code
         : 'UNKNOWN_ERROR'
-      dispatch({ type: 'FAIL', code })
+      if (code === 'NOT_ACTIVATED') dispatch({ type: 'NOT_ACTIVATED' })
+      else dispatch({ type: 'FAIL', code })
     } finally {
       stoppingRef.current = false
     }
@@ -77,6 +87,7 @@ function App() {
     if (state.status === 'error') dispatch({ type: 'DISMISS_ERROR' })
     setIsStarting(true)
     try {
+      vibrateRecordingStart()
       await recorderRef.current.start()
       // This executes in a user event handler after microphone access, not during render.
       // eslint-disable-next-line react-hooks/purity
@@ -118,7 +129,12 @@ function App() {
       )
       dispatch({ type: 'TICK', seconds })
     }, 250)
-    const timeout = window.setTimeout(() => void stopRecording(), MAX_RECORDING_SECONDS * 1000)
+    // Stop slightly early: stopping and encoder padding add a little audio, and
+    // the server rejects anything over MAX_RECORDING_SECONDS.
+    const timeout = window.setTimeout(
+      () => void stopRecording(),
+      MAX_RECORDING_SECONDS * 1000 - AUTO_STOP_MARGIN_MS,
+    )
     return () => {
       window.clearInterval(interval)
       window.clearTimeout(timeout)
@@ -129,6 +145,90 @@ function App() {
     recorderRef.current.cancel()
     audioRef.current?.pause()
   }, [])
+
+  useEffect(() => {
+    let active = true
+    void getSession()
+      .then((session) => {
+        if (active) dispatch({ type: 'SESSION_LOADED', activated: session.activated })
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        const code = error instanceof ApiError ? error.code : 'NETWORK_ERROR'
+        dispatch({ type: 'ACTIVATION_FAILED', code })
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const submitActivation = async (event: FormEvent) => {
+    event.preventDefault()
+    dispatch({ type: 'START_ACTIVATION' })
+    try {
+      await activateDevice(inviteCode)
+      setInvalidInvite(false)
+      dispatch({ type: 'ACTIVATION_SUCCESS' })
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : 'UNKNOWN_ERROR'
+      dispatch({ type: 'ACTIVATION_FAILED', code })
+    }
+  }
+
+  if (state.activationStatus !== 'activated') {
+    return (
+      <main className="app-shell activation-shell">
+        <AppHeader />
+        {state.activationStatus === 'checking' ? (
+          <section className="activation-checking" role="status">
+            <span className="loader" aria-hidden="true" />
+            <strong>正在確認裝置</strong>
+            <span>Memeriksa perangkat</span>
+          </section>
+        ) : (
+          <section className="activation-card">
+            <div className="activation-icon" aria-hidden="true">✓</div>
+            <h2>請家人輸入邀請碼</h2>
+            <p className="activation-subtitle">Minta keluarga memasukkan kode undangan</p>
+            {invalidInvite && (
+              <p className="activation-error" role="alert">
+                邀請連結無效或已撤銷<br />
+                Tautan undangan tidak valid atau sudah dicabut
+              </p>
+            )}
+            {!invalidInvite && state.activationError === 'INVALID_CODE' && (
+              <p className="activation-error" role="alert">
+                邀請碼無效或已撤銷<br />
+                Kode undangan tidak valid atau sudah dicabut
+              </p>
+            )}
+            {state.activationError && state.activationError !== 'INVALID_CODE' && (
+              <p className="activation-error" role="alert">
+                無法連線，請稍後再試<br />Tidak dapat terhubung, silakan coba lagi
+              </p>
+            )}
+            <form onSubmit={(event) => void submitActivation(event)}>
+              <label htmlFor="invite-code">邀請碼 / Kode undangan</label>
+              <input
+                id="invite-code"
+                value={inviteCode}
+                onChange={(event) => setInviteCode(formatInviteInput(event.target.value))}
+                placeholder="ABCD-EFGH"
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="text"
+                disabled={state.activationStatus === 'activating'}
+              />
+              <button type="submit" disabled={state.activationStatus === 'activating' || inviteCode.length < 8}>
+                {state.activationStatus === 'activating' ? '啟用中… / Mengaktifkan…' : '啟用 / Aktifkan'}
+              </button>
+            </form>
+          </section>
+        )}
+      </main>
+    )
+  }
 
   return (
     <main className="app-shell">
@@ -141,13 +241,7 @@ function App() {
           if (isResultAudioRef.current) dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
         }}
       />
-      <header className="app-header">
-        <div className="brand-mark" aria-hidden="true">譯</div>
-        <div>
-          <h1>阿罵的翻譯機</h1>
-          <p>台語 <span aria-hidden="true">↔</span> Bahasa Indonesia</p>
-        </div>
-      </header>
+      <AppHeader />
 
       {state.status === 'error' && (
         <section className="notice error-notice" role="alert">
@@ -180,18 +274,19 @@ function App() {
               disabled={isDisabled}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
+              aria-label={`${label.title}，${isActive ? label.stop : label.hint}`}
             >
-              <span className="speaker-icon" aria-hidden="true">
-                {isActive ? <span className="pulse-dot" /> : '●'}
-              </span>
-              <strong>{label.title}</strong>
+              {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
+              <strong><span>{label.title}</span></strong>
               {isActive ? (
                 <>
                   <span className="recording-time">{formatTime(state.elapsedSeconds)}</span>
-                  <span>{label.stop}</span>
+                  <span className="speaker-prompt">{label.stop}</span>
                 </>
               ) : (
-                <span>{isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}</span>
+                <span className="speaker-prompt">
+                  {isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}
+                </span>
               )}
             </button>
           )
@@ -245,7 +340,7 @@ function App() {
               <li key={conversation.id}>
                 <div>
                   <span className={`speaker-badge ${conversation.speaker}`}>
-                    {conversation.speaker === 'ama' ? '阿罵' : 'Perawat'}
+                    {conversation.speaker === 'ama' ? '阿嬤' : 'Perawat'}
                   </span>
                   <p>{conversation.source_text}</p>
                   <strong>{conversation.translated_text}</strong>
@@ -263,8 +358,30 @@ function App() {
           </ol>
         )}
       </section>
+      <footer className="privacy-note">
+        語音僅用於即時翻譯，本服務不保存錄音<br />
+        Suara hanya dipakai untuk terjemahan langsung dan tidak disimpan
+      </footer>
     </main>
   )
+}
+
+function AppHeader() {
+  return (
+    <header className="app-header">
+      <div className="brand-mark" aria-hidden="true">
+        <img src="/icon.svg" alt="" />
+      </div>
+      <div>
+        <h1>阿嬤的翻譯機</h1>
+      </div>
+    </header>
+  )
+}
+
+export function formatInviteInput(value: string): string {
+  const compact = value.toUpperCase().replace(/[\s-]/g, '').slice(0, 8)
+  return compact.length > 4 ? `${compact.slice(0, 4)}-${compact.slice(4)}` : compact
 }
 
 function formatTime(seconds: number): string {

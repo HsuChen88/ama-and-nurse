@@ -1,0 +1,5 @@
+.venv
+.pytest_cache
+tests
+README.md
+uv.lock

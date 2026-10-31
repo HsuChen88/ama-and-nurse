@@ -28,3 +28,5 @@
 | 2026-10-31 | **架構 C'**：前端 + API 改由 Cloudflare Worker（`worker/`，TypeScript）提供於 `app.ama-ama.com`，Cloudflare Access 限家人；Worker 以 REST 呼叫 Google Translation / TTS，經 tunnel + service token 呼叫 titan inference。音檔解碼與長度驗證移至 inference（PyAV）。Python `backend/` 保留作本機開發參考，Worker 上線驗證後再決定移除。 |
 | 2026-10-31 | 不使用 Cloudflare Access 保護 App（長輩與看護難以登入；未來希望廣泛使用）。改用「看不見的防護」：GCP 每日用量上限、Cloudflare WAF 限流、邀請碼／邀請連結啟用裝置（一年效期，可撤銷）；有濫用跡象時再加 Turnstile 隱形模式。 |
 | 2026-10-31 | 因未來可能廣泛使用，台語 TTS 方案避開非商用（NC）授權。 |
+| 2026-11-01 | 台語 TTS PoC 結論：GPT-SoVITS-TW 在拼音正確時聲調堪用；瓶頸是「產生正確台語拼音」。Taigi-Llama 的 POJ 與漢字分開生成且聲調不可靠，辭典轉換（taibun）文白異讀錯誤多。線上 LLM（Gemini Flash 3.6、Claude 各級）高品質需推理、延遲 7–12 秒，決定**不採用 LLM**。 |
+| 2026-11-01 | **過渡方案**：看護 → 阿嬤 先上線 Taigi-Llama-2-7B（zh-TW → POJ）+ GPT-SoVITS-TW，部署於 titan 的獨立 `taigi-tts` 容器，經 inference `/v1/tts` 轉接；使用者接受聲調不完全正確。屬家庭內部使用（含 NC 授權模型），等待商用台語服務（Taigi AI 等）回覆後替換。 |

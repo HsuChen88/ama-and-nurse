@@ -10,6 +10,19 @@ export class ApiError extends Error {
   }
 }
 
+export async function getSession(): Promise<{ activated: boolean }> {
+  if (USE_MOCK) return { activated: true }
+  return requestJson<{ activated: boolean }>(`${API_BASE}/api/session`)
+}
+
+export async function activateDevice(code: string): Promise<{ activated: true }> {
+  return requestJson<{ activated: true }>(`${API_BASE}/api/activate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+}
+
 export async function translateAudio(
   audio: Blob,
   filename: string,
@@ -36,17 +49,31 @@ export async function translateAudio(
     window.clearTimeout(timeout)
   }
 
-  if (!response.ok) {
-    let body: ApiErrorBody | undefined
-    try {
-      body = (await response.json()) as ApiErrorBody
-    } catch {
-      // An invalid error body is handled as a generic server error.
-    }
-    throw new ApiError(body?.error.code ?? 'UNKNOWN_ERROR', body?.error.message ?? response.statusText)
-  }
+  await throwApiError(response)
 
   return (await response.json()) as TranslationResult
+}
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(url, init)
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 'Unable to reach server')
+  }
+  await throwApiError(response)
+  return (await response.json()) as T
+}
+
+async function throwApiError(response: Response): Promise<void> {
+  if (response.ok) return
+  let body: ApiErrorBody | undefined
+  try {
+    body = (await response.clone().json()) as ApiErrorBody
+  } catch {
+    // An invalid error body is handled as a generic server error.
+  }
+  throw new ApiError(body?.error.code ?? 'UNKNOWN_ERROR', body?.error.message ?? response.statusText)
 }
 
 export function resolveAudioUrl(url: string): string {
@@ -63,7 +90,7 @@ async function mockTranslate(speaker: Speaker): Promise<TranslationResult> {
     source_lang: isAma ? 'nan-TW' : 'id',
     target_lang: isAma ? 'id' : 'nan-TW',
     source_text: isAma ? '你食飽未？' : 'Nenek sudah makan?',
-    translated_text: isAma ? 'Apakah kamu sudah makan?' : '阿罵，妳食飽未？',
+    translated_text: isAma ? 'Apakah kamu sudah makan?' : '阿嬤，妳食飽未？',
     audio_url: createToneUrl(),
     audio_mime: 'audio/wav',
     timings_ms: { asr: 300, translate: 180, tts: 240, total: 720 },
