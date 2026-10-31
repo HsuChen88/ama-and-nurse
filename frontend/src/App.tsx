@@ -12,13 +12,13 @@ const MAX_RECORDING_SECONDS = 30
 const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
   ama: {
     title: '說台語',
-    hint: '按一下開始講',
-    stop: '再按一下結束',
+    hint: '按一下開始',
+    stop: '結束再按一下',
   },
   caregiver: {
     title: 'Bicara Bahasa Indonesia',
-    hint: 'Ketuk untuk mulai bicara',
-    stop: 'Ketuk lagi untuk selesai',
+    hint: 'Ketuk untuk mulai',
+    stop: 'Selesai? Ketuk lagi',
   },
 }
 
@@ -271,10 +271,12 @@ function App() {
               {isActive ? (
                 <>
                   <span className="recording-time">{formatTime(state.elapsedSeconds)}</span>
-                  <span>{label.stop}</span>
+                  <span className="speaker-prompt">{label.stop}</span>
                 </>
               ) : (
-                <span>{isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}</span>
+                <span className="speaker-prompt">
+                  {isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}
+                </span>
               )}
             </button>
           )

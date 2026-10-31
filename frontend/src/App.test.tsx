@@ -7,6 +7,12 @@ const apiMocks = vi.hoisted(() => ({
   activateDevice: vi.fn(),
 }))
 
+const recorderMocks = vi.hoisted(() => ({
+  start: vi.fn(),
+  stop: vi.fn(),
+  cancel: vi.fn(),
+}))
+
 vi.mock('./api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('./api/client')>()
   return {
@@ -16,11 +22,30 @@ vi.mock('./api/client', async (importOriginal) => {
   }
 })
 
+vi.mock('./recording/recorder', () => {
+  class RecordingError extends Error {
+    constructor(public readonly code: string) {
+      super(code)
+    }
+  }
+
+  class AudioRecorder {
+    start = recorderMocks.start
+    stop = recorderMocks.stop
+    cancel = recorderMocks.cancel
+  }
+
+  return { AudioRecorder, RecordingError }
+})
+
 describe('device activation UI', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/')
     apiMocks.getSession.mockReset().mockResolvedValue({ activated: false })
     apiMocks.activateDevice.mockReset().mockResolvedValue({ activated: true })
+    recorderMocks.start.mockReset().mockResolvedValue(undefined)
+    recorderMocks.stop.mockReset()
+    recorderMocks.cancel.mockReset()
   })
 
   afterEach(() => cleanup())
@@ -38,6 +63,25 @@ describe('device activation UI', () => {
     expect(logo?.getAttribute('src')).toBe('/icon.svg')
     expect(logo?.getAttribute('alt')).toBe('')
     expect(logo?.closest('.brand-mark')?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('shows only the current large-button instruction with language aria labels', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+
+    const amaButton = await screen.findByRole('button', { name: '說台語，按一下開始' })
+    const caregiverButton = screen.getByRole('button', {
+      name: 'Bicara Bahasa Indonesia，Ketuk untuk mulai',
+    })
+    expect(screen.getByText('按一下開始')).toBeTruthy()
+    expect(screen.queryByText('結束再按一下')).toBeNull()
+
+    fireEvent.click(amaButton)
+
+    expect(await screen.findByRole('button', { name: '說台語，結束再按一下' })).toBeTruthy()
+    expect(screen.getByText('結束再按一下')).toBeTruthy()
+    expect(screen.queryByText('按一下開始')).toBeNull()
+    expect(caregiverButton).toHaveProperty('disabled', true)
   })
 
   it('replaces the app with activation and enters the main screen after success', async () => {

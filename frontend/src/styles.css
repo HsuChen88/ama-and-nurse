@@ -235,6 +235,7 @@ p {
 
 .speaker-button.recording {
   background: linear-gradient(145deg, #d52f28, #921810);
+  animation: recording-button-pulse 1.15s ease-in-out infinite;
 }
 
 .speaker-button strong {
@@ -243,9 +244,10 @@ p {
   line-height: 1.14;
 }
 
-.speaker-button > span:last-child {
-  font-size: clamp(1.05rem, 4vw, 1.28rem);
-  font-weight: 650;
+.speaker-prompt {
+  font-size: clamp(1.45rem, 6vw, 2rem);
+  font-weight: 850;
+  line-height: 1.2;
 }
 
 .speaker-flag {
@@ -260,9 +262,14 @@ p {
 }
 
 .recording-time {
-  font-size: 1.25rem;
+  font-size: clamp(1.35rem, 5vw, 1.65rem);
   font-variant-numeric: tabular-nums;
   font-weight: 850;
+}
+
+@keyframes recording-button-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.975); }
 }
 
 .processing,
