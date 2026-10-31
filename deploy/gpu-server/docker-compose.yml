@@ -2,6 +2,9 @@ services:
   inference:
     build:
       context: ../../inference
+      # The host firewall drops forwarded traffic from docker0/BuildKit networks,
+      # so RUN steps use the host network stack instead.
+      network: host
     restart: unless-stopped
     environment:
       INFERENCE_API_TOKEN: ${INFERENCE_API_TOKEN:?set INFERENCE_API_TOKEN}
@@ -32,3 +35,9 @@ services:
 
 volumes:
   huggingface-cache:
+
+# Only this pre-created bridge (br-wasn-egress) is allowed outbound by the host firewall.
+networks:
+  default:
+    name: ${DOCKER_EGRESS_NETWORK:-wasn-egress}
+    external: true
