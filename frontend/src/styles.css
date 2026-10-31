@@ -81,13 +81,6 @@ p {
   letter-spacing: 0.04em;
 }
 
-.app-header p {
-  margin-top: 5px;
-  color: #67534b;
-  font-size: clamp(1rem, 4vw, 1.2rem);
-  font-weight: 650;
-}
-
 .activation-shell {
   display: flex;
   flex-direction: column;

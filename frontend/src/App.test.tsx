@@ -33,7 +33,7 @@ describe('device activation UI', () => {
   it('replaces the app with activation and enters the main screen after success', async () => {
     render(<App />)
     expect(await screen.findByText('請家人輸入邀請碼')).toBeTruthy()
-    expect(screen.queryByText('阿罵講台語')).toBeNull()
+    expect(screen.queryByText('說台語')).toBeNull()
 
     fireEvent.change(screen.getByLabelText('邀請碼 / Kode undangan'), {
       target: { value: 'abcd efgh' },
@@ -42,7 +42,7 @@ describe('device activation UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '啟用 / Aktifkan' }))
 
     await waitFor(() => expect(apiMocks.activateDevice).toHaveBeenCalledWith('ABCD-EFGH'))
-    expect(await screen.findByText('阿罵講台語')).toBeTruthy()
+    expect(await screen.findByText('說台語')).toBeTruthy()
   })
 
   it('shows the bilingual invalid-link message from the URL', async () => {

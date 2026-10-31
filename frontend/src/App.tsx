@@ -10,12 +10,12 @@ const MAX_RECORDING_SECONDS = 30
 
 const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
   ama: {
-    title: '阿罵講台語',
+    title: '說台語',
     hint: '按一下開始講',
     stop: '再按一下結束',
   },
   caregiver: {
-    title: 'Perawat bicara Bahasa Indonesia',
+    title: 'Bicara Bahasa Indonesia',
     hint: 'Ketuk untuk mulai bicara',
     stop: 'Ketuk lagi untuk selesai',
   },
@@ -328,7 +328,7 @@ function App() {
               <li key={conversation.id}>
                 <div>
                   <span className={`speaker-badge ${conversation.speaker}`}>
-                    {conversation.speaker === 'ama' ? '阿罵' : 'Perawat'}
+                    {conversation.speaker === 'ama' ? '阿嬤' : 'Perawat'}
                   </span>
                   <p>{conversation.source_text}</p>
                   <strong>{conversation.translated_text}</strong>
@@ -359,8 +359,7 @@ function AppHeader() {
     <header className="app-header">
       <div className="brand-mark" aria-hidden="true">譯</div>
       <div>
-        <h1>阿罵的翻譯機</h1>
-        <p>台語 <span aria-hidden="true">↔</span> Bahasa Indonesia</p>
+        <h1>阿嬤的翻譯機</h1>
       </div>
     </header>
   )

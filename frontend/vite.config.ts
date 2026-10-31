@@ -11,8 +11,8 @@ export default defineConfig(({ command }) => ({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: '阿罵的翻譯機',
-        short_name: '阿罵翻譯機',
+        name: '阿嬤的翻譯機',
+        short_name: '阿嬤翻譯機',
         description: '台語與印尼語的手機口譯工具',
         theme_color: '#fff8e8',
         background_color: '#fff8e8',

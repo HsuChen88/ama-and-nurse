@@ -90,7 +90,7 @@ async function mockTranslate(speaker: Speaker): Promise<TranslationResult> {
     source_lang: isAma ? 'nan-TW' : 'id',
     target_lang: isAma ? 'id' : 'nan-TW',
     source_text: isAma ? '你食飽未？' : 'Nenek sudah makan?',
-    translated_text: isAma ? 'Apakah kamu sudah makan?' : '阿罵，妳食飽未？',
+    translated_text: isAma ? 'Apakah kamu sudah makan?' : '阿嬤，妳食飽未？',
     audio_url: createToneUrl(),
     audio_mime: 'audio/wav',
     timings_ms: { asr: 300, translate: 180, tts: 240, total: 720 },
