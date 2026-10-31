@@ -14,11 +14,7 @@ const recorderMocks = vi.hoisted(() => ({
   cancel: vi.fn(),
 }))
 
-const cueMocks = vi.hoisted(() => ({
-  prepare: vi.fn(),
-  playStart: vi.fn(),
-  playStop: vi.fn(),
-  close: vi.fn(),
+const vibrationMocks = vi.hoisted(() => ({
   vibrateStart: vi.fn(),
   vibrateStop: vi.fn(),
 }))
@@ -38,20 +34,10 @@ vi.mock('./api/client', async (importOriginal) => {
   }
 })
 
-vi.mock('./audio/cues', () => {
-  class RecordingCues {
-    prepare = cueMocks.prepare
-    playStart = cueMocks.playStart
-    playStop = cueMocks.playStop
-    close = cueMocks.close
-  }
-
-  return {
-    RecordingCues,
-    vibrateRecordingStart: cueMocks.vibrateStart,
-    vibrateRecordingStop: cueMocks.vibrateStop,
-  }
-})
+vi.mock('./audio/vibration', () => ({
+  vibrateRecordingStart: vibrationMocks.vibrateStart,
+  vibrateRecordingStop: vibrationMocks.vibrateStop,
+}))
 
 vi.mock('./audio/player', () => ({
   unlockAudioElement: playerMocks.unlock,
@@ -96,12 +82,8 @@ describe('device activation UI', () => {
       filename: 'recording.webm',
     })
     recorderMocks.cancel.mockReset()
-    cueMocks.prepare.mockReset()
-    cueMocks.playStart.mockReset().mockResolvedValue(undefined)
-    cueMocks.playStop.mockReset().mockResolvedValue(undefined)
-    cueMocks.close.mockReset()
-    cueMocks.vibrateStart.mockReset()
-    cueMocks.vibrateStop.mockReset()
+    vibrationMocks.vibrateStart.mockReset()
+    vibrationMocks.vibrateStop.mockReset()
     playerMocks.unlock.mockReset()
     playerMocks.play.mockReset().mockResolvedValue(undefined)
   })
@@ -142,24 +124,17 @@ describe('device activation UI', () => {
     expect(caregiverButton).toHaveProperty('disabled', true)
   })
 
-  it('waits for the start beep to finish before starting MediaRecorder', async () => {
-    let finishBeep: (() => void) | undefined
-    cueMocks.playStart.mockReturnValue(new Promise<void>((resolve) => { finishBeep = resolve }))
+  it('starts MediaRecorder immediately while triggering start vibration', async () => {
     apiMocks.getSession.mockResolvedValue({ activated: true })
     render(<App />)
 
     fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
 
-    expect(cueMocks.prepare).toHaveBeenCalledOnce()
-    expect(cueMocks.vibrateStart).toHaveBeenCalledOnce()
-    expect(cueMocks.playStart).toHaveBeenCalledOnce()
-    expect(recorderMocks.start).not.toHaveBeenCalled()
-
-    finishBeep?.()
+    expect(vibrationMocks.vibrateStart).toHaveBeenCalledOnce()
     await waitFor(() => expect(recorderMocks.start).toHaveBeenCalledOnce())
   })
 
-  it('stops MediaRecorder before playing the two stop beeps', async () => {
+  it('stops MediaRecorder before triggering stop vibration', async () => {
     apiMocks.getSession.mockResolvedValue({ activated: true })
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
@@ -168,10 +143,9 @@ describe('device activation UI', () => {
     fireEvent.click(recordingButton)
 
     expect(recorderMocks.stop).toHaveBeenCalledOnce()
-    expect(cueMocks.vibrateStop).toHaveBeenCalledOnce()
-    expect(cueMocks.playStop).toHaveBeenCalledOnce()
+    expect(vibrationMocks.vibrateStop).toHaveBeenCalledOnce()
     expect(recorderMocks.stop.mock.invocationCallOrder[0])
-      .toBeLessThan(cueMocks.playStop.mock.invocationCallOrder[0])
+      .toBeLessThan(vibrationMocks.vibrateStop.mock.invocationCallOrder[0])
   })
 
   it('replaces the app with activation and enters the main screen after success', async () => {
