@@ -1,0 +1,17 @@
+[project]
+name = "taigi-tts-poc"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "sacremoses==0.1.1",
+  "sentencepiece==0.2.0",
+  "torch==2.5.1",
+  "transformers==4.50.3",
+]
+
+[dependency-groups]
+dev = ["pytest==8.3.5"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
