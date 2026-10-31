@@ -10,6 +10,7 @@ dependencies = [
     { name = "av" },
     { name = "fastapi" },
     { name = "faster-whisper" },
+    { name = "numpy" },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -25,6 +26,7 @@ requires-dist = [
     { name = "av", specifier = ">=11,<19" },
     { name = "fastapi", specifier = ">=0.115.0,<1" },
     { name = "faster-whisper", specifier = ">=1.1.0,<2" },
+    { name = "numpy", specifier = ">=2.0,<3" },
     { name = "python-multipart", specifier = ">=0.0.18,<1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0,<1" },
 ]

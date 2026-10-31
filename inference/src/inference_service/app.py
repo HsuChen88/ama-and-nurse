@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hmac
 import logging
-import tempfile
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -13,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .audio import InvalidAudioError, validate_wav
+from .audio import AudioError, decode_and_validate, read_upload_limited
 from .config import SUPPORTED_LANGUAGES, Settings
 from .manager import AsrManager, EngineFactory
 
@@ -56,8 +55,20 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        from .engine import validate_offline_models
+
+        await run_in_threadpool(validate_offline_models, resolved_settings.models)
         for language in resolved_settings.preload:
-            await run_in_threadpool(manager.slot(language).preload)
+            try:
+                await run_in_threadpool(manager.slot(language).preload)
+            except Exception as exc:
+                if _offline_mode_enabled():
+                    raise RuntimeError(
+                        f"Failed to load {language} while HF_HUB_OFFLINE=1. Set "
+                        "HF_HUB_OFFLINE=0 and start the service once during an "
+                        "allowed network window to download or refresh the model."
+                    ) from exc
+                raise
         yield
 
     app = FastAPI(title="Ama Inference Service", version="1.0", lifespan=lifespan)
@@ -103,36 +114,28 @@ def create_app(
                 422, "INVALID_LANGUAGE", f"Unsupported language: {language}"
             )
 
-        data = await audio.read()
         try:
-            wav_info = validate_wav(data)
-        except InvalidAudioError as exc:
-            return error_response(422, "INVALID_AUDIO", str(exc))
+            data = await read_upload_limited(audio)
+            decoded = await run_in_threadpool(decode_and_validate, data)
+        except AudioError as exc:
+            return error_response(exc.status_code, exc.code, str(exc))
 
-        temp_path: Path | None = None
+        slot = manager.slot(language)
+        if not slot.reserve():
+            return error_response(503, "BUSY", "ASR queue is full")
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                temp_file.write(data)
-                temp_path = Path(temp_file.name)
-
-            slot = manager.slot(language)
-            if not slot.reserve():
-                return error_response(503, "BUSY", "ASR queue is full")
             result = await run_in_threadpool(
-                slot.transcribe_reserved, temp_path, language
+                slot.transcribe_reserved, decoded.samples, language
             )
         except Exception:
             logger.exception("ASR inference failed for language %s", language)
             return error_response(500, "MODEL_ERROR", "ASR model inference failed")
-        finally:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
 
         return AsrResponse(
             text=result.text,
             language=language,
             model=resolved_settings.models[language],
-            duration_ms=wav_info.duration_ms,
+            duration_ms=decoded.duration_ms,
             inference_ms=result.inference_ms,
         )
 
@@ -147,3 +150,12 @@ def _default_engine_factory(config):
     from .engine import FasterWhisperEngine
 
     return FasterWhisperEngine(config)
+
+
+def _offline_mode_enabled() -> bool:
+    return os.getenv("HF_HUB_OFFLINE", "").strip().upper() in {
+        "1",
+        "ON",
+        "YES",
+        "TRUE",
+    }

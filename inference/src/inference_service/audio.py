@@ -1,41 +1,78 @@
 from __future__ import annotations
 
 import io
-import wave
 from dataclasses import dataclass
 
+import numpy as np
+from fastapi import UploadFile
+from faster_whisper import decode_audio
+from numpy.typing import NDArray
 
-class InvalidAudioError(ValueError):
+SAMPLE_RATE = 16_000
+MIN_DURATION_SECONDS = 0.5
+MAX_DURATION_SECONDS = 30.0
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 64 * 1024
+
+AudioArray = NDArray[np.float32]
+
+
+class AudioError(ValueError):
+    code = "INVALID_AUDIO"
+    status_code = 422
+
+
+class InvalidAudioError(AudioError):
     pass
 
 
+class AudioTooShortError(AudioError):
+    code = "AUDIO_TOO_SHORT"
+
+
+class AudioTooLongError(AudioError):
+    code = "AUDIO_TOO_LONG"
+
+
+class PayloadTooLargeError(AudioError):
+    code = "PAYLOAD_TOO_LARGE"
+    status_code = 413
+
+
 @dataclass(frozen=True)
-class WavInfo:
+class DecodedAudio:
+    samples: AudioArray
     duration_ms: int
 
 
-def validate_wav(data: bytes) -> WavInfo:
-    if not data:
+async def read_upload_limited(upload: UploadFile) -> bytes:
+    chunks: list[bytes] = []
+    total_bytes = 0
+
+    while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+        total_bytes += len(chunk)
+        if total_bytes > MAX_UPLOAD_BYTES:
+            raise PayloadTooLargeError("Audio upload exceeds the 10 MB limit")
+        chunks.append(chunk)
+
+    if total_bytes == 0:
         raise InvalidAudioError("Audio file is empty")
+    return b"".join(chunks)
 
+
+def decode_and_validate(data: bytes) -> DecodedAudio:
     try:
-        with wave.open(io.BytesIO(data), "rb") as wav:
-            channels = wav.getnchannels()
-            sample_rate = wav.getframerate()
-            sample_width = wav.getsampwidth()
-            frames = wav.getnframes()
-            compression = wav.getcomptype()
-            audio_data = wav.readframes(frames)
-    except (EOFError, wave.Error) as exc:
-        raise InvalidAudioError("Audio must be a readable PCM WAV file") from exc
+        samples = decode_audio(io.BytesIO(data), sampling_rate=SAMPLE_RATE)
+    except Exception as exc:
+        raise InvalidAudioError("Audio could not be decoded") from exc
 
-    if channels != 1 or sample_rate != 16_000:
-        raise InvalidAudioError("Audio must be 16 kHz mono PCM WAV")
-    if compression != "NONE" or sample_width not in {1, 2, 3, 4}:
-        raise InvalidAudioError("Audio must use uncompressed PCM samples")
-    if frames == 0:
-        raise InvalidAudioError("Audio file contains no samples")
-    if len(audio_data) != frames * channels * sample_width:
-        raise InvalidAudioError("Audio WAV data is truncated")
+    duration_seconds = len(samples) / SAMPLE_RATE
+    if duration_seconds < MIN_DURATION_SECONDS:
+        raise AudioTooShortError("Audio must be at least 0.5 seconds long")
+    if duration_seconds > MAX_DURATION_SECONDS:
+        raise AudioTooLongError("Audio must be at most 30 seconds long")
 
-    return WavInfo(duration_ms=round(frames / sample_rate * 1000))
+    return DecodedAudio(
+        samples=np.asarray(samples, dtype=np.float32),
+        duration_ms=round(duration_seconds * 1000),
+    )

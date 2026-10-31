@@ -3,17 +3,22 @@ from __future__ import annotations
 
 import argparse
 import json
-import mimetypes
 import time
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from inference_service.media import audio_content_type
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Smoke-test a running inference service")
-    parser.add_argument("wav", type=Path, help="16 kHz mono PCM WAV file")
+    parser.add_argument(
+        "audio",
+        type=Path,
+        help="webm/opus, mp4/aac, ogg/opus, or 16 kHz mono WAV file",
+    )
     parser.add_argument("--url", default="http://127.0.0.1:8001")
     parser.add_argument("--token", required=True, help="INFERENCE_API_TOKEN value")
     parser.add_argument("--language", choices=("nan-TW", "id"), required=True)
@@ -22,9 +27,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def multipart_body(wav: Path, language: str) -> tuple[bytes, str]:
+def multipart_body(audio: Path, language: str) -> tuple[bytes, str]:
     boundary = f"----ama-inference-{uuid.uuid4().hex}"
-    mime = mimetypes.guess_type(wav.name)[0] or "audio/wav"
+    mime = audio_content_type(audio)
     chunks = [
         f"--{boundary}\r\n".encode(),
         b'Content-Disposition: form-data; name="language"\r\n\r\n',
@@ -32,10 +37,10 @@ def multipart_body(wav: Path, language: str) -> tuple[bytes, str]:
         b"\r\n",
         f"--{boundary}\r\n".encode(),
         (
-            f'Content-Disposition: form-data; name="audio"; filename="{wav.name}"\r\n'
+            f'Content-Disposition: form-data; name="audio"; filename="{audio.name}"\r\n'
         ).encode(),
         f"Content-Type: {mime}\r\n\r\n".encode(),
-        wav.read_bytes(),
+        audio.read_bytes(),
         b"\r\n",
         f"--{boundary}--\r\n".encode(),
     ]
@@ -44,7 +49,7 @@ def multipart_body(wav: Path, language: str) -> tuple[bytes, str]:
 
 def main() -> int:
     args = parse_args()
-    body, boundary = multipart_body(args.wav, args.language)
+    body, boundary = multipart_body(args.audio, args.language)
     headers = {
         "Authorization": f"Bearer {args.token}",
         "Content-Type": f"multipart/form-data; boundary={boundary}",

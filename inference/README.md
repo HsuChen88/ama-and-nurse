@@ -11,7 +11,7 @@ The Breeze model transcribes spoken Taiwanese Hokkien into Mandarin Chinese char
 
 ## Local setup
 
-Requires Python 3.12, `uv`, and FFmpeg for preparing audio.
+Requires Python 3.12 and `uv`. Audio decoding uses the PyAV libraries bundled with the Python dependency; no FFmpeg executable is required.
 
 ```bash
 cd inference
@@ -29,12 +29,14 @@ INFERENCE_API_TOKEN=local-secret INFERENCE_PRELOAD=nan-TW,id \
 
 The process deliberately refuses to start when `INFERENCE_API_TOKEN` is empty.
 
-## Smoke request
+Set `HF_HUB_OFFLINE=1` when the configured models must load strictly from the local Hugging Face cache. Startup validates both model artifacts even when lazy loading is enabled. If either is absent, the error explains how to run one controlled startup with `HF_HUB_OFFLINE=0` to populate the cache.
 
-The WAV must be readable, uncompressed, mono, and 16 kHz.
+## Accepted audio and smoke request
+
+`POST /v1/asr` accepts browser recordings in WebM/Opus, MP4/AAC, and Ogg/Opus, plus 16 kHz mono WAV. The service decodes and resamples to 16 kHz mono, then enforces a 10 MB upload limit and a decoded duration of 0.5–30 seconds.
 
 ```bash
-uv run python scripts/smoke.py sample.wav \
+uv run python scripts/smoke.py sample.webm \
   --url http://127.0.0.1:8001 \
   --token local-secret \
   --language nan-TW
@@ -53,7 +55,7 @@ uv run pytest
 The optional real-model test is excluded by default:
 
 ```bash
-MODEL_SMOKE_WAV=sample.wav MODEL_SMOKE_LANGUAGE=id \
+MODEL_SMOKE_AUDIO=sample.webm MODEL_SMOKE_LANGUAGE=id \
   uv run pytest -m model
 ```
 

@@ -5,14 +5,15 @@ from pathlib import Path
 
 import pytest
 
+from inference_service.audio import decode_and_validate
 from inference_service.engine import EngineConfig, FasterWhisperEngine
 
 
 @pytest.mark.model
-def test_real_model_transcribes_wav():
-    audio_path = os.getenv("MODEL_SMOKE_WAV")
+def test_real_model_transcribes_audio():
+    audio_path = os.getenv("MODEL_SMOKE_AUDIO") or os.getenv("MODEL_SMOKE_WAV")
     if not audio_path:
-        pytest.skip("set MODEL_SMOKE_WAV to a 16 kHz mono WAV")
+        pytest.skip("set MODEL_SMOKE_AUDIO to a supported audio file")
 
     engine = FasterWhisperEngine(
         EngineConfig(
@@ -21,8 +22,9 @@ def test_real_model_transcribes_wav():
             compute_type=os.getenv("INFERENCE_COMPUTE_TYPE", "int8"),
         )
     )
+    decoded = decode_and_validate(Path(audio_path).read_bytes())
     result = engine.transcribe(
-        Path(audio_path), os.getenv("MODEL_SMOKE_LANGUAGE", "id")
+        decoded.samples, os.getenv("MODEL_SMOKE_LANGUAGE", "id")
     )
 
     assert isinstance(result, str)
