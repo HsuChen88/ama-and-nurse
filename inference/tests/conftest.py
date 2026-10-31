@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from inference_service.app import create_app
 from inference_service.config import Settings
+from inference_service.tts import TtsResult
 
 TOKEN = "test-token"
 
@@ -22,6 +23,22 @@ class FakeEngine:
     def transcribe(self, audio: np.ndarray, language: str) -> str:
         self.calls.append((audio, language))
         return self.text
+
+
+class FakeTtsClient:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.error: Exception | None = None
+
+    def synthesize(self, text: str) -> TtsResult:
+        self.calls.append(text)
+        if self.error:
+            raise self.error
+        return TtsResult(
+            b"fake-mp3",
+            "%E4%BD%A0%E5%A5%BD",
+            "L%C3%AD%20h%C3%B3%2E",
+        )
 
 
 @pytest.fixture
@@ -43,8 +60,21 @@ def fake_engine() -> FakeEngine:
 
 
 @pytest.fixture
-def client(settings: Settings, fake_engine: FakeEngine):
-    app = create_app(settings, engine_factory=lambda _: fake_engine)
+def fake_tts_client() -> FakeTtsClient:
+    return FakeTtsClient()
+
+
+@pytest.fixture
+def client(
+    settings: Settings,
+    fake_engine: FakeEngine,
+    fake_tts_client: FakeTtsClient,
+):
+    app = create_app(
+        settings,
+        engine_factory=lambda _: fake_engine,
+        tts_client=fake_tts_client,
+    )
     with TestClient(app) as test_client:
         yield test_client
 
