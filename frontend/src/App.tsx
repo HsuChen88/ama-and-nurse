@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
+import { RecordingCues, vibrateRecordingStart, vibrateRecordingStop } from './audio/cues'
 import { IndonesiaFlag, TaiwanFlag } from './components/flags'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
@@ -30,6 +31,7 @@ function App() {
     () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
   )
   const recorderRef = useRef(new AudioRecorder())
+  const cuesRef = useRef(new RecordingCues())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
@@ -62,7 +64,10 @@ function App() {
 
     try {
       if (!speaker) throw new RecordingError('MIC_UNAVAILABLE')
-      const { blob, filename } = await recorderRef.current.stop()
+      const recording = recorderRef.current.stop()
+      vibrateRecordingStop()
+      const stopCue = cuesRef.current.playStop()
+      const [{ blob, filename }] = await Promise.all([recording, stopCue])
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
       dispatch({ type: 'UPLOAD_SUCCESS', conversation })
@@ -83,6 +88,8 @@ function App() {
     if (state.status === 'error') dispatch({ type: 'DISMISS_ERROR' })
     setIsStarting(true)
     try {
+      vibrateRecordingStart()
+      await cuesRef.current.playStart()
       await recorderRef.current.start()
       // This executes in a user event handler after microphone access, not during render.
       // eslint-disable-next-line react-hooks/purity
@@ -98,6 +105,7 @@ function App() {
 
   const handleSpeaker = (speaker: Speaker) => {
     if (state.status === 'recording' && state.activeSpeaker === speaker) {
+      cuesRef.current.prepare()
       const audio = audioRef.current
       if (audio) {
         isResultAudioRef.current = false
@@ -106,6 +114,7 @@ function App() {
       void stopRecording()
       return
     }
+    cuesRef.current.prepare()
     void startRecording(speaker)
   }
 
@@ -133,6 +142,7 @@ function App() {
 
   useEffect(() => () => {
     recorderRef.current.cancel()
+    cuesRef.current.close()
     audioRef.current?.pause()
   }, [])
 

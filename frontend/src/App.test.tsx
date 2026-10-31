@@ -5,6 +5,7 @@ import App, { formatInviteInput } from './App'
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   activateDevice: vi.fn(),
+  translateAudio: vi.fn(),
 }))
 
 const recorderMocks = vi.hoisted(() => ({
@@ -13,14 +14,49 @@ const recorderMocks = vi.hoisted(() => ({
   cancel: vi.fn(),
 }))
 
+const cueMocks = vi.hoisted(() => ({
+  prepare: vi.fn(),
+  playStart: vi.fn(),
+  playStop: vi.fn(),
+  close: vi.fn(),
+  vibrateStart: vi.fn(),
+  vibrateStop: vi.fn(),
+}))
+
+const playerMocks = vi.hoisted(() => ({
+  unlock: vi.fn(),
+  play: vi.fn(),
+}))
+
 vi.mock('./api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('./api/client')>()
   return {
     ...original,
     getSession: apiMocks.getSession,
     activateDevice: apiMocks.activateDevice,
+    translateAudio: apiMocks.translateAudio,
   }
 })
+
+vi.mock('./audio/cues', () => {
+  class RecordingCues {
+    prepare = cueMocks.prepare
+    playStart = cueMocks.playStart
+    playStop = cueMocks.playStop
+    close = cueMocks.close
+  }
+
+  return {
+    RecordingCues,
+    vibrateRecordingStart: cueMocks.vibrateStart,
+    vibrateRecordingStop: cueMocks.vibrateStop,
+  }
+})
+
+vi.mock('./audio/player', () => ({
+  unlockAudioElement: playerMocks.unlock,
+  playOnAudioElement: playerMocks.play,
+}))
 
 vi.mock('./recording/recorder', () => {
   class RecordingError extends Error {
@@ -43,9 +79,31 @@ describe('device activation UI', () => {
     window.history.replaceState(null, '', '/')
     apiMocks.getSession.mockReset().mockResolvedValue({ activated: false })
     apiMocks.activateDevice.mockReset().mockResolvedValue({ activated: true })
+    apiMocks.translateAudio.mockReset().mockResolvedValue({
+      id: 'result-1',
+      speaker: 'ama',
+      source_lang: 'nan-TW',
+      target_lang: 'id',
+      source_text: '食飽未？',
+      translated_text: 'Sudah makan?',
+      audio_url: '/api/audio/result-1',
+      audio_mime: 'audio/mpeg',
+      timings_ms: { asr: 1, translate: 1, tts: 1, total: 3 },
+    })
     recorderMocks.start.mockReset().mockResolvedValue(undefined)
-    recorderMocks.stop.mockReset()
+    recorderMocks.stop.mockReset().mockResolvedValue({
+      blob: new Blob(['audio']),
+      filename: 'recording.webm',
+    })
     recorderMocks.cancel.mockReset()
+    cueMocks.prepare.mockReset()
+    cueMocks.playStart.mockReset().mockResolvedValue(undefined)
+    cueMocks.playStop.mockReset().mockResolvedValue(undefined)
+    cueMocks.close.mockReset()
+    cueMocks.vibrateStart.mockReset()
+    cueMocks.vibrateStop.mockReset()
+    playerMocks.unlock.mockReset()
+    playerMocks.play.mockReset().mockResolvedValue(undefined)
   })
 
   afterEach(() => cleanup())
@@ -82,6 +140,38 @@ describe('device activation UI', () => {
     expect(screen.getByText('結束再按一下')).toBeTruthy()
     expect(screen.queryByText('按一下開始')).toBeNull()
     expect(caregiverButton).toHaveProperty('disabled', true)
+  })
+
+  it('waits for the start beep to finish before starting MediaRecorder', async () => {
+    let finishBeep: (() => void) | undefined
+    cueMocks.playStart.mockReturnValue(new Promise<void>((resolve) => { finishBeep = resolve }))
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+
+    expect(cueMocks.prepare).toHaveBeenCalledOnce()
+    expect(cueMocks.vibrateStart).toHaveBeenCalledOnce()
+    expect(cueMocks.playStart).toHaveBeenCalledOnce()
+    expect(recorderMocks.start).not.toHaveBeenCalled()
+
+    finishBeep?.()
+    await waitFor(() => expect(recorderMocks.start).toHaveBeenCalledOnce())
+  })
+
+  it('stops MediaRecorder before playing the two stop beeps', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    const recordingButton = await screen.findByRole('button', { name: '說台語，結束再按一下' })
+
+    fireEvent.click(recordingButton)
+
+    expect(recorderMocks.stop).toHaveBeenCalledOnce()
+    expect(cueMocks.vibrateStop).toHaveBeenCalledOnce()
+    expect(cueMocks.playStop).toHaveBeenCalledOnce()
+    expect(recorderMocks.stop.mock.invocationCallOrder[0])
+      .toBeLessThan(cueMocks.playStop.mock.invocationCallOrder[0])
   })
 
   it('replaces the app with activation and enters the main screen after success', async () => {
