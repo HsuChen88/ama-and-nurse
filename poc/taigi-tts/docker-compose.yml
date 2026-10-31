@@ -5,6 +5,9 @@ services:
       network: host
       args:
         KAEDETAI_COMMIT: 81959852f75c972a0a78364f8ea6b14133a11f4a
+    # GPT-SoVITS (e.g. sv.py) resolves modules and weights relative to the
+    # repo root, so run from there; run.py itself uses absolute paths.
+    command: ["sh", "-c", "cd /opt/GPT-SoVITS && exec python /app/run.py"]
     environment:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
