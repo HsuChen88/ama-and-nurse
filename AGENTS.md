@@ -17,8 +17,9 @@
 
 ```
 frontend/   React + Vite + TypeScript + PWA（pnpm）
-backend/    Python 3.12 + FastAPI（uv 管理）
-inference/  自架模型推論服務，Python 3.12 + FastAPI（uv 管理），契約見 docs/inference-contract.md
+worker/     正式 API 後端 + 前端託管：Cloudflare Worker（TypeScript、wrangler、pnpm）
+backend/    Python 3.12 + FastAPI（uv 管理）；本機開發參考，正式環境已由 worker/ 取代
+inference/  自架模型推論服務（部署於 GPU server titan），Python 3.12 + FastAPI（uv 管理），契約見 docs/inference-contract.md
 docs/       規劃、API 契約、調研報告
 deploy/     docker compose、cloudflared 設定
 ```
