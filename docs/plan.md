@@ -22,3 +22,7 @@
 | 2026-10-31 | 不做自動語者偵測、連續收音、串流；按一下開始、按一下結束。 |
 | 2026-10-31 | 自架模型推論獨立為 `inference/` 服務（契約見 `docs/inference-contract.md`）：測試期 Mac CPU，正式部署遠端 GPU server，backend 經 Cloudflare Tunnel + Access service token + Bearer token 呼叫。ASR 測試期延遲 5–15 秒可接受。 |
 | 2026-10-31 | Phase 3 優先評估在自有 GPU server 部署 Breeze ASR 26 與 BreezyVoice；台語 TTS 模型可用性待確認（BreezyVoice 26 權重未公開，舊版 BreezyVoice 僅華語）。 |
+| 2026-10-31 | 阿罵聽不懂華語：看護 → 阿罵方向不得以華語 TTS 頂替，需等台語 TTS。 |
+| 2026-10-31 | GPU server（titan，TITAN RTX，driver 535）不升級驅動（host 上有其他 VM）：inference 映像以 CUDA 12.8 minor-version compatibility 執行並移除 forward-compat 函式庫。 |
+| 2026-10-31 | titan 平時禁止對外連線（僅 Cloudflare Tunnel 7844 常開；建置時臨時開放）：titan 只跑 GPU inference + cloudflared，執行期不得依賴外網（模型離線載入）。 |
+| 2026-10-31 | **架構 C'**：前端 + API 改由 Cloudflare Worker（`worker/`，TypeScript）提供於 `ama.ama-ama.com`，Cloudflare Access 限家人；Worker 以 REST 呼叫 Google Translation / TTS，經 tunnel + service token 呼叫 titan inference。音檔解碼與長度驗證移至 inference（PyAV）。Python `backend/` 保留作本機開發參考，Worker 上線驗證後再決定移除。 |
