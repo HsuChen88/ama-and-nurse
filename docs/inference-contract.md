@@ -7,7 +7,7 @@ API 後端（Cloudflare Worker）↔ inference 服務的唯一介面。inference
 ## 部署拓撲
 
 ```
-手機 PWA ──HTTPS──> Cloudflare Access（家人）──> Worker（ama.ama-ama.com：前端靜態檔 + /api）
+手機 PWA ──HTTPS──> Cloudflare Access（家人）──> Worker（app.ama-ama.com：前端靜態檔 + /api）
 Worker ──HTTPS──> Cloudflare Access（service token）──Tunnel──> titan: inference
 ```
 
