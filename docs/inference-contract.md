@@ -1,17 +1,20 @@
-# Inference Service Contract (v1)
+# Inference Service Contract (v2)
 
-backend ↔ inference 服務的唯一介面。inference 服務負責所有自架模型推論（ASR，未來的 TTS），測試階段跑在 Mac CPU，正式部署在遠端 GPU server，backend 透過外網呼叫。任何修改都必須先經技術主管同意。
+API 後端（Cloudflare Worker）↔ inference 服務的唯一介面。inference 服務負責所有自架模型推論（ASR，未來的 TTS），部署在 GPU server（titan）。任何修改都必須先經技術主管同意。
+
+> v2（2026-10-31）：`/v1/asr` 改收瀏覽器原始錄音，解碼、正規化與長度驗證由 inference 負責（呼叫端不再需要 FFmpeg）；新增 `AUDIO_TOO_SHORT` / `AUDIO_TOO_LONG` / `PAYLOAD_TOO_LARGE`。16 kHz mono WAV 仍可接受。
 
 ## 部署拓撲
 
 ```
-手機 PWA ──HTTPS──> Cloudflare (Access: 家人) ──Tunnel──> frontend + backend
-backend ──HTTPS──> Cloudflare (Access: service token) ──Tunnel──> GPU server: inference
+手機 PWA ──HTTPS──> Cloudflare Access（家人）──> Worker（ama.ama-ama.com：前端靜態檔 + /api）
+Worker ──HTTPS──> Cloudflare Access（service token）──Tunnel──> titan: inference
 ```
 
 - inference 永遠不直接暴露在公網；外網只經 Cloudflare Tunnel，且由 Cloudflare Access service token 保護。
 - 服務本身另外驗證 `Authorization: Bearer <INFERENCE_API_TOKEN>`（雙層防護；本機開發也必須帶）。
-- backend 呼叫時帶 `CF-Access-Client-Id` / `CF-Access-Client-Secret`（若有設定）與 Bearer token。
+- 呼叫端帶 `CF-Access-Client-Id` / `CF-Access-Client-Secret`（若有設定）與 Bearer token。
+- titan 執行期不可依賴外網：模型只在建置／首次下載時連網，之後以離線模式（`HF_HUB_OFFLINE=1`）載入。
 
 ## 認證
 
@@ -23,34 +26,39 @@ backend ──HTTPS──> Cloudflare (Access: service token) ──Tunnel──
 
 | 欄位       | 型別   | 說明 |
 | ---------- | ------ | ---- |
-| `audio`    | file   | 16 kHz mono PCM WAV（backend 已用 FFmpeg 正規化） |
+| `audio`    | file   | 瀏覽器 MediaRecorder 原始錄音（webm/opus、mp4/aac、ogg/opus）或 16 kHz mono WAV；上限 10 MB。服務端解碼並重取樣為 16 kHz mono 後辨識 |
 | `language` | string | `nan-TW`（台語 → 輸出繁體中文，Breeze ASR 26）或 `id`（印尼語 → 輸出印尼文） |
+
+錄音長度限制：0.5–30 秒（以解碼後的實際長度計）。
 
 ### 200
 
 ```json
-{ "text": "你今天有吃藥無？", "language": "nan-TW", "model": "breeze-asr-26", "duration_ms": 2310, "inference_ms": 6120 }
+{ "text": "你今天有吃藥無？", "language": "nan-TW", "model": "breeze-asr-26", "duration_ms": 2310, "inference_ms": 612 }
 ```
 
-辨識不到語音時 `text` 為空字串（不視為錯誤，由 backend 轉成 `ASR_EMPTY`）。
+辨識不到語音時 `text` 為空字串（不視為錯誤，由呼叫端轉成 `ASR_EMPTY`）。
 
 ## `POST /v1/tts`（保留，Phase 3）
 
-`application/json`：`{ "text": "...", "language": "nan-TW" }` → 回傳音訊位元組，`Content-Type` 為音訊 mime。v1 尚未實作，回 501 `NOT_IMPLEMENTED`。
+`application/json`：`{ "text": "...", "language": "nan-TW" }` → 回傳音訊位元組，`Content-Type` 為音訊 mime。尚未實作，回 501 `NOT_IMPLEMENTED`。
 
 ## `GET /v1/health`
 
-不需認證。`{"status":"ok","device":"cpu","models":{"nan-TW":"breeze-asr-26","id":"whisper-large-v3-turbo"},"loaded":["nan-TW"]}`
+不需認證。`{"status":"ok","device":"cuda","models":{"nan-TW":"breeze-asr-26","id":"whisper-large-v3-turbo"},"loaded":["nan-TW","id"]}`
 
 ## 錯誤格式
 
 `{ "error": { "code": "...", "message": "..." } }`
 
-| code               | HTTP |
-| ------------------ | ---- |
-| `UNAUTHORIZED`     | 401  |
-| `INVALID_LANGUAGE` | 422  |
-| `INVALID_AUDIO`    | 422  |
-| `MODEL_ERROR`      | 500  |
-| `NOT_IMPLEMENTED`  | 501  |
-| `BUSY`             | 503  |
+| code                | HTTP | 情境 |
+| ------------------- | ---- | ---- |
+| `UNAUTHORIZED`      | 401  | Bearer token 錯誤或缺少 |
+| `PAYLOAD_TOO_LARGE` | 413  | 音檔 > 10 MB |
+| `INVALID_LANGUAGE`  | 422  | language 不是 `nan-TW` / `id` |
+| `INVALID_AUDIO`     | 422  | 缺檔或無法解碼 |
+| `AUDIO_TOO_SHORT`   | 422  | < 0.5 秒 |
+| `AUDIO_TOO_LONG`    | 422  | > 30 秒 |
+| `MODEL_ERROR`       | 500  | 推論失敗 |
+| `NOT_IMPLEMENTED`   | 501  | 尚未實作的端點 |
+| `BUSY`              | 503  | 排隊已滿 |
