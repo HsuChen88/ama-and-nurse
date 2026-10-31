@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import run as app
 from taigi_poc.pipeline import (
     Result,
     clean_llama_output,
@@ -15,6 +16,7 @@ from taigi_poc.pipeline import (
     translate_opus_text,
     write_results_csv,
 )
+from taigi_poc.s2_convert import inference_config
 
 
 ROOT = Path(__file__).parents[1]
@@ -86,3 +88,40 @@ def test_report_generation_with_fake_data(tmp_path: Path) -> None:
     assert "匯出評分 CSV" in page
     assert "data-provider=\"opus\"" in page
     assert "data-provider=\"llama\"" in page
+
+
+def test_s2_inference_config_is_v2pro_tw() -> None:
+    source = {
+        "version": "v2Pro",
+        "train": {"segment_size": 20480},
+        "data": {"sampling_rate": 32000},
+        "model": {"version": "v2Pro"},
+    }
+    converted = inference_config(source, 1033)
+    assert converted["version"] == "v2ProTw"
+    assert converted["model"]["version"] == "v2ProTw"
+    assert converted["model"]["semantic_frame_rate"] == "25hz"
+    assert source["model"] == {"version": "v2Pro"}
+    with pytest.raises(ValueError, match="expected 1033"):
+        inference_config(source, 732)
+
+
+def test_selftest_synthesizes_one_fixed_sentence(tmp_path: Path) -> None:
+    cached = tmp_path / "cached.mp3"
+    cached.write_bytes(b"fake mp3")
+
+    class FakeTTS:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def synthesize(self, text, **kwargs):
+            self.calls.append((text, kwargs))
+            return cached
+
+    tts = FakeTTS()
+    output = app.run_selftest(tts, tmp_path)
+    assert output == tmp_path / "selftest.mp3"
+    assert output.read_bytes() == b"fake mp3"
+    assert len(tts.calls) == 1
+    assert tts.calls[0][0] == "Lí hó."
+    assert tts.calls[0][1]["seed"] == 42

@@ -20,17 +20,21 @@ from taigi_poc.pipeline import (
     write_json,
     write_results_csv,
 )
+from taigi_poc.s2_convert import ensure_inference_s2
 
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_OUT = Path(os.environ.get("TAIGI_POC_OUT", "/out"))
+GPT_SOVITS_ROOT = Path("/opt/GPT-SoVITS")
+S2_TRAINING = GPT_SOVITS_ROOT / "models/s2_r4_e15.pth"
+S2_CONFIG = GPT_SOVITS_ROOT / "configs/s2_tai_v2pro_ft.json"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the offline Taiwanese TTS batch PoC")
     parser.add_argument(
         "--phase",
-        choices=("all", "translate", "synthesize", "report"),
+        choices=("all", "translate", "synthesize", "report", "selftest"),
         default="all",
     )
     parser.add_argument("--sentences", type=Path, default=ROOT / "sentences.csv")
@@ -116,8 +120,40 @@ def run_llama(results, model_path: Path, checkpoint_path: Path) -> None:
     print("[llama] released GPU memory before GPT-SoVITS load", flush=True)
 
 
-def run_tts(results, out_dir: Path, checkpoint_path: Path) -> None:
+def load_tts(out_dir: Path):
+    converted = ensure_inference_s2(
+        S2_TRAINING,
+        out_dir / ".cache/s2_r4_e15_infer.pth",
+        S2_CONFIG,
+    )
+    os.environ["TW_TTS_S2"] = str(converted)
     from tw_inference import tw_synth
+
+    # Also cover an earlier import in an interactive/debug invocation.
+    tw_synth.S2 = converted
+    print("[tts] model stack will load once on the first synthesis", flush=True)
+    return tw_synth
+
+
+def run_selftest(tts, out_dir: Path) -> Path:
+    source, elapsed = timed(
+        lambda: str(
+            tts.synthesize(
+                "Lí hó.",
+                ref=None,
+                seed=42,
+                apply_sandhi=True,
+                verbose=False,
+            )
+        )
+    )
+    target = out_dir / "selftest.mp3"
+    copy_audio(Path(source), target)
+    print(f"[selftest] {elapsed:.3f}s -> {target}", flush=True)
+    return target
+
+
+def run_tts(tts, results, out_dir: Path, checkpoint_path: Path) -> None:
 
     audio_dir = out_dir / "audio"
     for index, row in enumerate(results, 1):
@@ -128,7 +164,7 @@ def run_tts(results, out_dir: Path, checkpoint_path: Path) -> None:
             try:
                 source, elapsed = timed(
                     lambda text=text: str(
-                        tw_synth.synthesize(
+                        tts.synthesize(
                             text,
                             ref=None,
                             seed=42,
@@ -140,6 +176,7 @@ def run_tts(results, out_dir: Path, checkpoint_path: Path) -> None:
                 copy_audio(Path(source), target)
                 setattr(row, f"{provider}_tts_s", f"{elapsed:.3f}")
                 setattr(row, f"{provider}_audio", f"audio/{target.name}")
+                setattr(row, f"{provider}_error", "")
             except Exception as exc:  # preserve all other rows for listening
                 message = f"{type(exc).__name__}: {exc}"
                 setattr(row, f"{provider}_error", message)
@@ -150,8 +187,14 @@ def run_tts(results, out_dir: Path, checkpoint_path: Path) -> None:
 
 def main() -> int:
     args = parse_args()
+    if not GPT_SOVITS_ROOT.is_dir():
+        raise FileNotFoundError(f"GPT-SoVITS root not found: {GPT_SOVITS_ROOT}")
+    os.chdir(GPT_SOVITS_ROOT)
     args.out.mkdir(parents=True, exist_ok=True)
     state_path = args.out / "translations.json"
+    if args.phase == "selftest":
+        run_selftest(load_tts(args.out), args.out)
+        return 0
     if args.phase in {"all", "translate"}:
         expected = read_sentences(args.sentences)
         results = read_json(state_path) if state_path.exists() else expected
@@ -172,7 +215,7 @@ def main() -> int:
             )
         results = read_json(state_path)
     if args.phase in {"all", "synthesize"}:
-        run_tts(results, args.out, state_path)
+        run_tts(load_tts(args.out), results, args.out, state_path)
         write_json(results, state_path)
     if args.phase in {"all", "synthesize", "report"}:
         write_results_csv(results, args.out / "results.csv")
