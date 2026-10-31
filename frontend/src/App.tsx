@@ -8,8 +8,9 @@ import { AudioRecorder, RecordingError } from './recording/recorder'
 import { appReducer, initialState } from './state/machine'
 import type { Conversation, Speaker } from './types'
 
-const MAX_RECORDING_SECONDS = 30
-const AUTO_STOP_MARGIN_MS = 500
+// Well under the server's 30 s limit, so encoder padding on auto-stop never
+// pushes a recording over it; shorter turns also translate and play back better.
+const MAX_RECORDING_SECONDS = 20
 
 const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
   ama: {
@@ -129,12 +130,7 @@ function App() {
       )
       dispatch({ type: 'TICK', seconds })
     }, 250)
-    // Stop slightly early: stopping and encoder padding add a little audio, and
-    // the server rejects anything over MAX_RECORDING_SECONDS.
-    const timeout = window.setTimeout(
-      () => void stopRecording(),
-      MAX_RECORDING_SECONDS * 1000 - AUTO_STOP_MARGIN_MS,
-    )
+    const timeout = window.setTimeout(() => void stopRecording(), MAX_RECORDING_SECONDS * 1000)
     return () => {
       window.clearInterval(interval)
       window.clearTimeout(timeout)
@@ -385,7 +381,7 @@ export function formatInviteInput(value: string): string {
 }
 
 function formatTime(seconds: number): string {
-  return `0:${seconds.toString().padStart(2, '0')} / 0:30`
+  return `0:${seconds.toString().padStart(2, '0')} / 0:${MAX_RECORDING_SECONDS}`
 }
 
 export default App
