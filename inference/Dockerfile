@@ -35,4 +35,5 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 EXPOSE 8001
-CMD ["uv", "run", "uvicorn", "inference_service.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
+# Run the venv's uvicorn directly: `uv run` would re-sync the dev group on every start.
+CMD ["uvicorn", "inference_service.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
