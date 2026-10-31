@@ -41,9 +41,25 @@ tree 沒有這個檔案；文件所列的 `tw_samples/ref_001.wav` 也未發布�
 映像因此加入一個小型相容層，只呼叫 fork 既有的 `TTS_infer_pack`，並修補
 明確的 `tw` 路由與 1033-token `v2ProTw` 判斷。starter reference 則在建置
 時從同一 commit 已公開的五段 demo mp3 合併為最多 9.5 秒 mono wav，
-transcript
-也由該 repo 的 `tw_samples/README.md` 內容組成。這是 PoC workaround，並非
+transcript 也由該 repo 的 `tw_samples/README.md` 內容組成。這是 PoC
+workaround，並非
 作者未發布的原始 reference；聽測報告不可把它描述為官方預設聲音。
+
+### S2 推論格式轉換
+
+`s2_r4_e15.pth` 是含 optimizer 與 `enc_q` 的訓練 checkpoint，不是
+GPT-SoVITS 的推論格式。程式在第一次 TTS 前於 CPU 一次性完成以下動作：
+
+1. 以 `map_location="cpu"` 載入使用者已同意的 checkpoint。
+2. 取出 `model` state dict 並移除 `enc_q.*`。
+3. 驗證 `enc_p.text_embedding.weight` 第一維為 1033。
+4. 搭配 repo 的 `configs/s2_tai_v2pro_ft.json`，寫成
+   `weight`、`config`、`info` 推論格式。
+5. 寫入 v2Pro 的 `05` header，並以 GPT-SoVITS 的版本判斷函式確認。
+
+結果原子寫入 `/out/.cache/s2_r4_e15_infer.pth`。後續執行會核對來源檔大小、
+修改時間、1033 symbols 與 header 後直接使用 cache，不再載入訓練 checkpoint。
+同一個執行程序只建立一套 S1、S2、BERT、HuBERT 與 SV model stack。
 
 ## 建置時預載的離線資源
 
@@ -75,7 +91,7 @@ FunASR、ModelScope ASR 與 BigVGAN 不在這條 `v2ProTw` 批次 TTS 路徑上�
 ```bash
 cd poc/taigi-tts
 export DOCKER_EGRESS_NETWORK=wasn-egress
-docker compose build --pull
+docker compose build
 mkdir -p ~/taigi-poc-out
 docker compose run --rm taigi-tts-poc
 ```
@@ -84,13 +100,22 @@ docker compose run --rm taigi-tts-poc
 接到 compose 要求的 external egress network，但離線環境變數會禁止 HF 與
 Transformers 下載。
 
-若完整執行中斷，可保留 `/out/translations.json` 分階段重跑：
+若 titan 已有成功的 `/out/translations.json`，離線重建只會重做 pip 層之後
+的 `/app` COPY layer。不要加 `--pull`。先跑單句 self-test，再跑完整合成：
+
+```bash
+docker compose build
+docker compose run --rm taigi-tts-poc \
+  python /app/run.py --phase selftest
+docker compose run --rm taigi-tts-poc \
+  python /app/run.py --phase synthesize
+```
+
+一般分階段執行：
 
 ```bash
 docker compose run --rm taigi-tts-poc \
   python /app/run.py --phase translate
-docker compose run --rm taigi-tts-poc \
-  python /app/run.py --phase synthesize
 docker compose run --rm taigi-tts-poc \
   python /app/run.py --phase report
 ```
@@ -101,6 +126,8 @@ docker compose run --rm taigi-tts-poc \
 - `~/taigi-poc-out/index.html`
 - `~/taigi-poc-out/audio/{id}_{opus|llama}.mp3`
 - `~/taigi-poc-out/translations.json`（斷點與除錯用）
+- `~/taigi-poc-out/.cache/s2_r4_e15_infer.pth`（轉換後的 S2）
+- `~/taigi-poc-out/selftest.mp3`
 
 `index.html` 可直接雙擊開啟。每個 provider 都能各自勾選「聽得懂／部分懂／
 聽不懂」與「意思正確／錯誤」，瀏覽器以 localStorage 暫存，頁首按鈕可匯出
