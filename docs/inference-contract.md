@@ -1,6 +1,8 @@
-# Inference Service Contract (v2)
+# Inference Service Contract (v3)
 
-API 後端（Cloudflare Worker）↔ inference 服務的唯一介面。inference 服務負責所有自架模型推論（ASR，未來的 TTS），部署在 GPU server（titan）。任何修改都必須先經技術主管同意。
+API 後端（Cloudflare Worker）↔ inference 服務的唯一介面。inference 服務負責所有自架模型推論（ASR、台語 TTS），部署在 GPU server（titan）。任何修改都必須先經技術主管同意。
+
+> v3（2026-11-01）：實作 `POST /v1/tts`（台語）。inference 將請求轉接給 titan 內部的 `taigi-tts` 容器（不對外暴露）；對外認證與錯誤格式不變。
 
 > v2（2026-10-31）：`/v1/asr` 改收瀏覽器原始錄音，解碼、正規化與長度驗證由 inference 負責（呼叫端不再需要 FFmpeg）；新增 `AUDIO_TOO_SHORT` / `AUDIO_TOO_LONG` / `PAYLOAD_TOO_LARGE`。16 kHz mono WAV 仍可接受。
 
@@ -39,9 +41,26 @@ Worker ──HTTPS──> Cloudflare Access（service token）──Tunnel──
 
 辨識不到語音時 `text` 為空字串（不視為錯誤，由呼叫端轉成 `ASR_EMPTY`）。
 
-## `POST /v1/tts`（保留，Phase 3）
+## `POST /v1/tts`
 
-`application/json`：`{ "text": "...", "language": "nan-TW" }` → 回傳音訊位元組，`Content-Type` 為音訊 mime。尚未實作，回 501 `NOT_IMPLEMENTED`。
+`application/json`：`{ "text": "繁體華語句子", "language": "nan-TW" }`
+
+- `text` 為**繁體華語**（Worker 端 Google 翻譯 id → zh-TW 的結果），長度 1–200 字；台語轉寫（Taigi-Llama → POJ）由服務端負責。
+- 只支援 `language: "nan-TW"`，其他值回 422 `INVALID_LANGUAGE`。
+
+### 200
+
+回傳 `audio/mpeg` 位元組，並附下列標頭（值為 UTF-8 percent-encoding）：
+
+| 標頭 | 說明 |
+| ---- | ---- |
+| `X-Taigi-Han` | 台語漢字（Taigi-Llama 輸出，僅供顯示／除錯） |
+| `X-Taigi-Romanization` | 實際送進 TTS 的 POJ |
+| `X-Inference-Ms` | 服務端總耗時 |
+
+### 錯誤
+
+沿用下方錯誤格式；另有 422 `INVALID_TEXT`（空字串或過長）、503 `BUSY`（排隊已滿）、502 `TTS_BACKEND_ERROR`（taigi-tts 容器無回應或失敗）。
 
 ## `GET /v1/health`
 
@@ -59,6 +78,7 @@ Worker ──HTTPS──> Cloudflare Access（service token）──Tunnel──
 | `INVALID_AUDIO`     | 422  | 缺檔或無法解碼 |
 | `AUDIO_TOO_SHORT`   | 422  | < 0.5 秒 |
 | `AUDIO_TOO_LONG`    | 422  | > 30 秒 |
+| `INVALID_TEXT`      | 422  | TTS 文字為空或超過 200 字 |
 | `MODEL_ERROR`       | 500  | 推論失敗 |
-| `NOT_IMPLEMENTED`   | 501  | 尚未實作的端點 |
+| `TTS_BACKEND_ERROR` | 502  | taigi-tts 容器無回應或失敗 |
 | `BUSY`              | 503  | 排隊已滿 |
