@@ -13,3 +13,6 @@ dev-dist/
 # credentials
 *-sa.json
 ama-and-nurse-*.json
+
+# personal Claude Code settings
+.claude/settings.local.json
