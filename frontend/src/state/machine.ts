@@ -1,6 +1,6 @@
 import type { Conversation, Speaker } from '../types'
 
-export type Status = 'idle' | 'recording' | 'uploading' | 'playing' | 'error'
+export type Status = 'idle' | 'preparing' | 'recording' | 'uploading' | 'playing' | 'error'
 export type ActivationStatus = 'checking' | 'required' | 'activating' | 'activated'
 
 export interface AppState {
@@ -26,6 +26,7 @@ export const initialState: AppState = {
 }
 
 export type AppAction =
+  | { type: 'START_PREPARING'; speaker: Speaker }
   | { type: 'START_RECORDING'; speaker: Speaker }
   | { type: 'TICK'; seconds: number }
   | { type: 'START_UPLOAD' }
@@ -44,15 +45,22 @@ export type AppAction =
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case 'START_RECORDING':
-      if (state.status !== 'idle' && state.status !== 'error') return state
+    case 'START_PREPARING':
+      if (state.status !== 'idle') return state
       return {
         ...state,
-        status: 'recording',
+        status: 'preparing',
         activeSpeaker: action.speaker,
         elapsedSeconds: 0,
         errorCode: null,
         autoplayBlocked: false,
+      }
+    case 'START_RECORDING':
+      if (state.status !== 'preparing' || state.activeSpeaker !== action.speaker) return state
+      return {
+        ...state,
+        status: 'recording',
+        elapsedSeconds: 0,
       }
     case 'TICK':
       if (state.status !== 'recording') return state

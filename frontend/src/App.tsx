@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
+import { CompletionChime } from './audio/completion-chime'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { vibrateRecordingStart, vibrateRecordingStop } from './audio/vibration'
+import { ErrorDialog } from './components/ErrorDialog'
 import { IndonesiaFlag, TaiwanFlag } from './components/flags'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
@@ -11,34 +13,49 @@ import type { Conversation, Speaker } from './types'
 const MAX_RECORDING_SECONDS = 30
 const AUTO_STOP_MARGIN_MS = 500
 
-const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
+const SPEAKER_LABELS: Record<Speaker, {
+  title: string
+  hint: string
+  stop: string
+  uploading: string
+}> = {
   ama: {
     title: '說台語',
     hint: '按一下開始',
     stop: '結束再按一下',
+    uploading: '✓ 已結束，翻譯中…',
   },
   caregiver: {
     title: 'Bicara Bahasa Indonesia',
     hint: 'Ketuk untuk mulai',
     stop: 'Selesai? Ketuk lagi',
+    uploading: '✓ Selesai, sedang menerjemahkan…',
   },
 }
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState)
-  const [isStarting, setIsStarting] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
+  const [pressedSpeaker, setPressedSpeaker] = useState<Speaker | null>(null)
+  const [isReplayPressed, setIsReplayPressed] = useState(false)
   const [invalidInvite, setInvalidInvite] = useState(
     () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
   )
   const recorderRef = useRef(new AudioRecorder())
+  const completionChimeRef = useRef(new CompletionChime())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
+  const startingRef = useRef(false)
   const stoppingRef = useRef(false)
+  const speakerButtonRefs = useRef<Record<Speaker, HTMLButtonElement | null>>({
+    ama: null,
+    caregiver: null,
+  })
+  const lastSpeakerButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const latest = state.conversations[0] ?? null
-  const busy = isStarting || ['uploading', 'playing'].includes(state.status)
+  const busy = ['preparing', 'uploading', 'playing'].includes(state.status)
 
   const playAudio = useCallback(async (conversation: Conversation, isAutomatic = false) => {
     const audio = audioRef.current
@@ -66,6 +83,7 @@ function App() {
       if (!speaker) throw new RecordingError('MIC_UNAVAILABLE')
       const recording = recorderRef.current.stop()
       vibrateRecordingStop()
+      void completionChimeRef.current.play()
       const { blob, filename } = await recording
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
@@ -83,9 +101,10 @@ function App() {
   }, [playAudio, state.activeSpeaker])
 
   const startRecording = async (speaker: Speaker) => {
-    if (!['idle', 'error'].includes(state.status) || isStarting) return
-    if (state.status === 'error') dispatch({ type: 'DISMISS_ERROR' })
-    setIsStarting(true)
+    if (state.status !== 'idle' || startingRef.current) return
+    startingRef.current = true
+    dispatch({ type: 'START_PREPARING', speaker })
+    completionChimeRef.current.prepare()
     try {
       vibrateRecordingStart()
       await recorderRef.current.start()
@@ -97,12 +116,14 @@ function App() {
       const code = error instanceof RecordingError ? error.code : 'MIC_UNAVAILABLE'
       dispatch({ type: 'FAIL', code })
     } finally {
-      setIsStarting(false)
+      startingRef.current = false
     }
   }
 
   const handleSpeaker = (speaker: Speaker) => {
+    lastSpeakerButtonRef.current = speakerButtonRefs.current[speaker]
     if (state.status === 'recording' && state.activeSpeaker === speaker) {
+      completionChimeRef.current.prepare()
       const audio = audioRef.current
       if (audio) {
         isResultAudioRef.current = false
@@ -112,6 +133,22 @@ function App() {
       return
     }
     void startRecording(speaker)
+  }
+
+  const pressSpeaker = (speaker: Speaker) => {
+    const canPress = state.status === 'idle'
+      || (state.status === 'recording' && state.activeSpeaker === speaker)
+    if (canPress) setPressedSpeaker(speaker)
+  }
+
+  const releaseSpeaker = (speaker: Speaker) => {
+    setPressedSpeaker((current) => current === speaker ? null : current)
+  }
+
+  const dismissError = () => {
+    const focusTarget = lastSpeakerButtonRef.current ?? speakerButtonRefs.current.ama
+    dispatch({ type: 'DISMISS_ERROR' })
+    window.setTimeout(() => focusTarget?.focus(), 0)
   }
 
   const replay = (conversation: Conversation) => {
@@ -143,6 +180,7 @@ function App() {
 
   useEffect(() => () => {
     recorderRef.current.cancel()
+    completionChimeRef.current.close()
     audioRef.current?.pause()
   }, [])
 
@@ -243,50 +281,50 @@ function App() {
       />
       <AppHeader />
 
-      {state.status === 'error' && (
-        <section className="notice error-notice" role="alert">
-          <span aria-hidden="true">!</span>
-          <p>{friendlyError(state.errorCode ?? 'UNKNOWN_ERROR')}</p>
-          <button type="button" onClick={() => dispatch({ type: 'DISMISS_ERROR' })}>
-            知道了 / Mengerti
-          </button>
-        </section>
-      )}
-
-      {state.status === 'uploading' && (
-        <section className="processing" role="status" aria-live="polite">
-          <span className="loader" aria-hidden="true" />
-          <strong>翻譯中，請稍等</strong>
-          <span>Sedang menerjemahkan, mohon tunggu</span>
-        </section>
-      )}
-
       <section className="speaker-actions" aria-label="選擇說話者">
         {(['ama', 'caregiver'] as const).map((speaker) => {
+          const isPreparing = state.status === 'preparing' && state.activeSpeaker === speaker
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
-          const isDisabled = busy || (state.status === 'recording' && !isActive)
+          const isUploading = state.status === 'uploading' && state.activeSpeaker === speaker
+          const isPressed = isPreparing || isUploading
+            || (pressedSpeaker === speaker && (state.status === 'idle' || isActive))
+          const isDisabled = busy || state.status === 'error'
+            || (state.status === 'recording' && !isActive)
           const label = SPEAKER_LABELS[speaker]
           return (
             <button
-              className={`speaker-button ${speaker} ${isActive ? 'recording' : ''}`}
+              className={`speaker-button ${speaker} ${isPreparing ? 'preparing' : ''} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''} ${isPressed ? 'pressed' : ''}`}
               type="button"
               key={speaker}
+              ref={(element) => { speakerButtonRefs.current[speaker] = element }}
               disabled={isDisabled}
+              onPointerDown={() => pressSpeaker(speaker)}
+              onPointerUp={() => releaseSpeaker(speaker)}
+              onPointerCancel={() => releaseSpeaker(speaker)}
+              onPointerLeave={() => releaseSpeaker(speaker)}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
-              aria-label={`${label.title}，${isActive ? label.stop : label.hint}`}
+              aria-busy={isPreparing || isUploading || undefined}
+              aria-label={`${label.title}，${isPreparing ? '準備中… / Bersiap…' : isActive ? label.stop : isUploading ? label.uploading : label.hint}`}
             >
               {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
               <strong><span>{label.title}</span></strong>
-              {isActive ? (
+              {isPreparing ? (
+                <span className="preparing-feedback" role="status" aria-live="polite">
+                  <span className="preparing-spinner" aria-hidden="true" />
+                  <span>準備中… / Bersiap…</span>
+                </span>
+              ) : isUploading ? (
+                <span className="speaker-prompt uploading-prompt" role="status" aria-live="polite">
+                  {label.uploading}
+                </span>
+              ) : isActive ? (
                 <>
                   <span className="recording-time">{formatTime(state.elapsedSeconds)}</span>
                   <span className="speaker-prompt">{label.stop}</span>
                 </>
               ) : (
-                <span className="speaker-prompt">
-                  {isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}
-                </span>
+                <span className="speaker-prompt">{label.hint}</span>
               )}
             </button>
           )
@@ -308,10 +346,19 @@ function App() {
       )}
 
       <button
-        className={`replay-main ${state.autoplayBlocked ? 'needs-attention' : ''}`}
+        className={`replay-main ${state.autoplayBlocked ? 'needs-attention' : ''} ${isReplayPressed ? 'pressed' : ''}`}
         type="button"
         disabled={!latest || state.status !== 'idle'}
-        onClick={() => latest && replay(latest)}
+        onPointerDown={() => {
+          if (latest && state.status === 'idle') setIsReplayPressed(true)
+        }}
+        onPointerUp={() => setIsReplayPressed(false)}
+        onPointerCancel={() => setIsReplayPressed(false)}
+        onPointerLeave={() => setIsReplayPressed(false)}
+        onClick={() => {
+          setIsReplayPressed(false)
+          if (latest) replay(latest)
+        }}
       >
         <span aria-hidden="true">▶</span>
         <span>
@@ -362,6 +409,12 @@ function App() {
         語音僅用於即時翻譯，本服務不保存錄音<br />
         Suara hanya dipakai untuk terjemahan langsung dan tidak disimpan
       </footer>
+      {state.status === 'error' && (
+        <ErrorDialog
+          message={friendlyError(state.errorCode ?? 'UNKNOWN_ERROR')}
+          onDismiss={dismissError}
+        />
+      )}
     </main>
   )
 }

@@ -64,7 +64,28 @@ export class AudioRecorder {
       })
       this.reset()
     })
-    this.recorder.start(250)
+    await new Promise<void>((resolve, reject) => {
+      const handleStart = () => {
+        this.recorder?.removeEventListener('error', handleError)
+        resolve()
+      }
+      const handleError = () => {
+        this.recorder?.removeEventListener('start', handleStart)
+        reject(new RecordingError('MIC_UNAVAILABLE'))
+      }
+
+      this.recorder?.addEventListener('start', handleStart, { once: true })
+      this.recorder?.addEventListener('error', handleError, { once: true })
+      try {
+        this.recorder?.start(250)
+      } catch {
+        handleError()
+      }
+    }).catch((error: unknown) => {
+      this.closeTracks()
+      this.reset()
+      throw error
+    })
   }
 
   stop(): Promise<RecordingResult> {
