@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
+import { CompletionChime } from './audio/completion-chime'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { vibrateRecordingStart, vibrateRecordingStop } from './audio/vibration'
 import { IndonesiaFlag, TaiwanFlag } from './components/flags'
@@ -11,16 +12,23 @@ import type { Conversation, Speaker } from './types'
 const MAX_RECORDING_SECONDS = 30
 const AUTO_STOP_MARGIN_MS = 500
 
-const SPEAKER_LABELS: Record<Speaker, { title: string; hint: string; stop: string }> = {
+const SPEAKER_LABELS: Record<Speaker, {
+  title: string
+  hint: string
+  stop: string
+  uploading: string
+}> = {
   ama: {
     title: '說台語',
     hint: '按一下開始',
     stop: '結束再按一下',
+    uploading: '✓ 已結束，翻譯中…',
   },
   caregiver: {
     title: 'Bicara Bahasa Indonesia',
     hint: 'Ketuk untuk mulai',
     stop: 'Selesai? Ketuk lagi',
+    uploading: '✓ Selesai, sedang menerjemahkan…',
   },
 }
 
@@ -32,6 +40,7 @@ function App() {
     () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
   )
   const recorderRef = useRef(new AudioRecorder())
+  const completionChimeRef = useRef(new CompletionChime())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
@@ -67,6 +76,7 @@ function App() {
       const recording = recorderRef.current.stop()
       vibrateRecordingStop()
       const { blob, filename } = await recording
+      void completionChimeRef.current.play()
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
       dispatch({ type: 'UPLOAD_SUCCESS', conversation })
@@ -103,6 +113,7 @@ function App() {
 
   const handleSpeaker = (speaker: Speaker) => {
     if (state.status === 'recording' && state.activeSpeaker === speaker) {
+      completionChimeRef.current.prepare()
       const audio = audioRef.current
       if (audio) {
         isResultAudioRef.current = false
@@ -111,6 +122,7 @@ function App() {
       void stopRecording()
       return
     }
+    completionChimeRef.current.prepare()
     void startRecording(speaker)
   }
 
@@ -143,6 +155,7 @@ function App() {
 
   useEffect(() => () => {
     recorderRef.current.cancel()
+    completionChimeRef.current.close()
     audioRef.current?.pause()
   }, [])
 
@@ -253,32 +266,29 @@ function App() {
         </section>
       )}
 
-      {state.status === 'uploading' && (
-        <section className="processing" role="status" aria-live="polite">
-          <span className="loader" aria-hidden="true" />
-          <strong>翻譯中，請稍等</strong>
-          <span>Sedang menerjemahkan, mohon tunggu</span>
-        </section>
-      )}
-
       <section className="speaker-actions" aria-label="選擇說話者">
         {(['ama', 'caregiver'] as const).map((speaker) => {
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
+          const isUploading = state.status === 'uploading' && state.activeSpeaker === speaker
           const isDisabled = busy || (state.status === 'recording' && !isActive)
           const label = SPEAKER_LABELS[speaker]
           return (
             <button
-              className={`speaker-button ${speaker} ${isActive ? 'recording' : ''}`}
+              className={`speaker-button ${speaker} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
               type="button"
               key={speaker}
               disabled={isDisabled}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
-              aria-label={`${label.title}，${isActive ? label.stop : label.hint}`}
+              aria-label={`${label.title}，${isActive ? label.stop : isUploading ? label.uploading : label.hint}`}
             >
               {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
               <strong><span>{label.title}</span></strong>
-              {isActive ? (
+              {isUploading ? (
+                <span className="speaker-prompt uploading-prompt" role="status" aria-live="polite">
+                  {label.uploading}
+                </span>
+              ) : isActive ? (
                 <>
                   <span className="recording-time">{formatTime(state.elapsedSeconds)}</span>
                   <span className="speaker-prompt">{label.stop}</span>

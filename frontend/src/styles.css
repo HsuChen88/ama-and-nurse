@@ -232,8 +232,9 @@ p {
 }
 
 .speaker-button:not(:disabled):active {
-  transform: translateY(5px);
-  box-shadow: 0 4px 0 rgb(44 25 18 / 17%), 0 7px 16px rgb(44 25 18 / 18%);
+  animation: none;
+  transform: translateY(7px) scale(0.975);
+  box-shadow: 0 2px 0 rgb(44 25 18 / 14%), 0 5px 12px rgb(44 25 18 / 14%);
 }
 
 .speaker-button.ama {
@@ -247,6 +248,13 @@ p {
 .speaker-button.recording {
   background: linear-gradient(145deg, #d52f28, #921810);
   animation: recording-button-pulse 1.15s ease-in-out infinite;
+}
+
+.speaker-button.uploading:disabled {
+  opacity: 1;
+  transform: translateY(6px) scale(0.985);
+  background: linear-gradient(145deg, #67534b, #46362f);
+  box-shadow: 0 2px 0 rgb(44 25 18 / 12%), 0 5px 12px rgb(44 25 18 / 13%);
 }
 
 .speaker-button strong {
@@ -284,6 +292,11 @@ p {
   word-break: normal;
 }
 
+.uploading-prompt {
+  max-width: 18em;
+  min-height: 2.4em;
+}
+
 .speaker-flag {
   display: block;
   width: 72px;
@@ -306,7 +319,6 @@ p {
   50% { transform: scale(0.975); }
 }
 
-.processing,
 .notice {
   display: flex;
   align-items: center;
@@ -314,18 +326,6 @@ p {
   margin-bottom: 15px;
   border-radius: 22px;
   padding: 16px;
-}
-
-.processing {
-  flex-direction: column;
-  justify-content: center;
-  border: 3px solid #d28a1a;
-  background: #fff5d6;
-  text-align: center;
-}
-
-.processing strong {
-  font-size: 1.4rem;
 }
 
 .loader {

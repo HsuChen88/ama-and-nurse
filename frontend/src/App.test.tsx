@@ -24,6 +24,12 @@ const playerMocks = vi.hoisted(() => ({
   play: vi.fn(),
 }))
 
+const chimeMocks = vi.hoisted(() => ({
+  prepare: vi.fn(),
+  play: vi.fn(),
+  close: vi.fn(),
+}))
+
 vi.mock('./api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('./api/client')>()
   return {
@@ -42,6 +48,14 @@ vi.mock('./audio/vibration', () => ({
 vi.mock('./audio/player', () => ({
   unlockAudioElement: playerMocks.unlock,
   playOnAudioElement: playerMocks.play,
+}))
+
+vi.mock('./audio/completion-chime', () => ({
+  CompletionChime: class {
+    prepare = chimeMocks.prepare
+    play = chimeMocks.play
+    close = chimeMocks.close
+  },
 }))
 
 vi.mock('./recording/recorder', () => {
@@ -86,6 +100,9 @@ describe('device activation UI', () => {
     vibrationMocks.vibrateStop.mockReset()
     playerMocks.unlock.mockReset()
     playerMocks.play.mockReset().mockResolvedValue(undefined)
+    chimeMocks.prepare.mockReset()
+    chimeMocks.play.mockReset().mockResolvedValue(undefined)
+    chimeMocks.close.mockReset()
   })
 
   afterEach(() => cleanup())
@@ -132,6 +149,8 @@ describe('device activation UI', () => {
 
     expect(vibrationMocks.vibrateStart).toHaveBeenCalledOnce()
     await waitFor(() => expect(recorderMocks.start).toHaveBeenCalledOnce())
+    expect(chimeMocks.prepare).toHaveBeenCalledOnce()
+    expect(chimeMocks.play).not.toHaveBeenCalled()
   })
 
   it('stops MediaRecorder before triggering stop vibration', async () => {
@@ -146,6 +165,49 @@ describe('device activation UI', () => {
     expect(vibrationMocks.vibrateStop).toHaveBeenCalledOnce()
     expect(recorderMocks.stop.mock.invocationCallOrder[0])
       .toBeLessThan(vibrationMocks.vibrateStop.mock.invocationCallOrder[0])
+  })
+
+  it('keeps the pressed button depressed with ended copy while translating', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    apiMocks.translateAudio.mockImplementation(() => new Promise(() => undefined))
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+
+    const uploadingButton = await screen.findByRole('button', {
+      name: '說台語，✓ 已結束，翻譯中…',
+    })
+    expect(uploadingButton.classList.contains('uploading')).toBe(true)
+    expect(uploadingButton).toHaveProperty('disabled', true)
+    expect(screen.queryByText('翻譯中，請稍等')).toBeNull()
+  })
+
+  it('plays the completion chime only after recording and track shutdown finish', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    const events: string[] = []
+    let finishStop: ((value: { blob: Blob; filename: string }) => void) | undefined
+    recorderMocks.stop.mockImplementation(() => {
+      events.push('recorder-stop')
+      events.push('track-stop')
+      return new Promise((resolve) => {
+        finishStop = resolve
+      })
+    })
+    chimeMocks.play.mockImplementation(() => {
+      events.push('chime-play')
+      return Promise.resolve()
+    })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+
+    expect(events).toEqual(['recorder-stop', 'track-stop'])
+    expect(playerMocks.unlock).toHaveBeenCalledOnce()
+    finishStop?.({ blob: new Blob(['audio']), filename: 'recording.webm' })
+    await waitFor(() => expect(chimeMocks.play).toHaveBeenCalledOnce())
+    expect(events).toEqual(['recorder-stop', 'track-stop', 'chime-play'])
   })
 
   it('replaces the app with activation and enters the main screen after success', async () => {
