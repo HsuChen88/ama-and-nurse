@@ -16,8 +16,11 @@ const result: Conversation = {
 }
 
 describe('appReducer', () => {
-  it('follows recording → uploading → playing → idle', () => {
-    const recording = appReducer(initialState, { type: 'START_RECORDING', speaker: 'ama' })
+  it('follows preparing → recording → uploading → playing → idle', () => {
+    const preparing = appReducer(initialState, { type: 'START_PREPARING', speaker: 'ama' })
+    expect(preparing.status).toBe('preparing')
+
+    const recording = appReducer(preparing, { type: 'START_RECORDING', speaker: 'ama' })
     expect(recording.status).toBe('recording')
     expect(recording.activeSpeaker).toBe('ama')
 
@@ -33,7 +36,8 @@ describe('appReducer', () => {
   })
 
   it('ignores a second speaker while recording', () => {
-    const recording = appReducer(initialState, { type: 'START_RECORDING', speaker: 'ama' })
+    const preparing = appReducer(initialState, { type: 'START_PREPARING', speaker: 'ama' })
+    const recording = appReducer(preparing, { type: 'START_RECORDING', speaker: 'ama' })
     const unchanged = appReducer(recording, {
       type: 'START_RECORDING',
       speaker: 'caregiver',
@@ -76,11 +80,28 @@ describe('appReducer', () => {
     expect(unchanged).toBe(failed)
 
     const idle = appReducer(failed, { type: 'DISMISS_ERROR' })
-    const recording = appReducer(idle, { type: 'START_RECORDING', speaker: 'caregiver' })
+    const preparing = appReducer(idle, { type: 'START_PREPARING', speaker: 'caregiver' })
+    const recording = appReducer(preparing, {
+      type: 'START_RECORDING',
+      speaker: 'caregiver',
+    })
 
     expect(recording.status).toBe('recording')
     expect(recording.activeSpeaker).toBe('caregiver')
     expect(recording.errorCode).toBeNull()
+  })
+
+  it('ignores recording until the prepared speaker reports MediaRecorder start', () => {
+    const preparing = appReducer(initialState, {
+      type: 'START_PREPARING',
+      speaker: 'ama',
+    })
+
+    expect(appReducer(preparing, {
+      type: 'START_RECORDING',
+      speaker: 'caregiver',
+    })).toBe(preparing)
+    expect(appReducer(preparing, { type: 'TICK', seconds: 5 })).toBe(preparing)
   })
 
   it('follows checking → required → activating → activated', () => {

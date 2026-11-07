@@ -35,7 +35,6 @@ const SPEAKER_LABELS: Record<Speaker, {
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState)
-  const [isStarting, setIsStarting] = useState(false)
   const [inviteCode, setInviteCode] = useState('')
   const [invalidInvite, setInvalidInvite] = useState(
     () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
@@ -45,6 +44,7 @@ function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
+  const startingRef = useRef(false)
   const stoppingRef = useRef(false)
   const speakerButtonRefs = useRef<Record<Speaker, HTMLButtonElement | null>>({
     ama: null,
@@ -53,7 +53,7 @@ function App() {
   const lastSpeakerButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const latest = state.conversations[0] ?? null
-  const busy = isStarting || ['uploading', 'playing'].includes(state.status)
+  const busy = ['preparing', 'uploading', 'playing'].includes(state.status)
 
   const playAudio = useCallback(async (conversation: Conversation, isAutomatic = false) => {
     const audio = audioRef.current
@@ -99,8 +99,10 @@ function App() {
   }, [playAudio, state.activeSpeaker])
 
   const startRecording = async (speaker: Speaker) => {
-    if (state.status !== 'idle' || isStarting) return
-    setIsStarting(true)
+    if (state.status !== 'idle' || startingRef.current) return
+    startingRef.current = true
+    dispatch({ type: 'START_PREPARING', speaker })
+    completionChimeRef.current.prepare()
     try {
       vibrateRecordingStart()
       await recorderRef.current.start()
@@ -112,7 +114,7 @@ function App() {
       const code = error instanceof RecordingError ? error.code : 'MIC_UNAVAILABLE'
       dispatch({ type: 'FAIL', code })
     } finally {
-      setIsStarting(false)
+      startingRef.current = false
     }
   }
 
@@ -128,7 +130,6 @@ function App() {
       void stopRecording()
       return
     }
-    completionChimeRef.current.prepare()
     void startRecording(speaker)
   }
 
@@ -270,6 +271,7 @@ function App() {
 
       <section className="speaker-actions" aria-label="選擇說話者">
         {(['ama', 'caregiver'] as const).map((speaker) => {
+          const isPreparing = state.status === 'preparing' && state.activeSpeaker === speaker
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
           const isUploading = state.status === 'uploading' && state.activeSpeaker === speaker
           const isDisabled = busy || state.status === 'error'
@@ -277,18 +279,27 @@ function App() {
           const label = SPEAKER_LABELS[speaker]
           return (
             <button
-              className={`speaker-button ${speaker} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
+              className={`speaker-button ${speaker} ${isPreparing ? 'preparing' : ''} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
               type="button"
               key={speaker}
               ref={(element) => { speakerButtonRefs.current[speaker] = element }}
               disabled={isDisabled}
+              onPointerDown={() => {
+                // A pointer listener lets iOS Safari paint :active immediately; action stays on click.
+              }}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
-              aria-label={`${label.title}，${isActive ? label.stop : isUploading ? label.uploading : label.hint}`}
+              aria-busy={isPreparing || isUploading || undefined}
+              aria-label={`${label.title}，${isPreparing ? '準備中… / Bersiap…' : isActive ? label.stop : isUploading ? label.uploading : label.hint}`}
             >
               {speaker === 'ama' ? <TaiwanFlag /> : <IndonesiaFlag />}
               <strong><span>{label.title}</span></strong>
-              {isUploading ? (
+              {isPreparing ? (
+                <span className="preparing-feedback" role="status" aria-live="polite">
+                  <span className="preparing-spinner" aria-hidden="true" />
+                  <span>準備中… / Bersiap…</span>
+                </span>
+              ) : isUploading ? (
                 <span className="speaker-prompt uploading-prompt" role="status" aria-live="polite">
                   {label.uploading}
                 </span>
@@ -298,9 +309,7 @@ function App() {
                   <span className="speaker-prompt">{label.stop}</span>
                 </>
               ) : (
-                <span className="speaker-prompt">
-                  {isStarting ? '正在開啟麥克風… / Membuka mikrofon…' : label.hint}
-                </span>
+                <span className="speaker-prompt">{label.hint}</span>
               )}
             </button>
           )

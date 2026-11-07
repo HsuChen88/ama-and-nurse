@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { formatInviteInput } from './App'
 import { RecordingError } from './recording/recorder'
@@ -106,7 +106,10 @@ describe('device activation UI', () => {
     chimeMocks.close.mockReset()
   })
 
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
 
   it('formats pasted and typed invite codes', () => {
     expect(formatInviteInput(' abcd efgh ')).toBe('ABCD-EFGH')
@@ -152,6 +155,69 @@ describe('device activation UI', () => {
     await waitFor(() => expect(recorderMocks.start).toHaveBeenCalledOnce())
     expect(chimeMocks.prepare).toHaveBeenCalledOnce()
     expect(chimeMocks.play).not.toHaveBeenCalled()
+  })
+
+  it('shows preparing immediately and waits for MediaRecorder start before recording', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    let reportStarted: (() => void) | undefined
+    recorderMocks.start.mockImplementation(() => new Promise<void>((resolve) => {
+      reportStarted = resolve
+    }))
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+
+    const preparingButton = screen.getByRole('button', {
+      name: '說台語，準備中… / Bersiap…',
+    })
+    expect(preparingButton.classList.contains('preparing')).toBe(true)
+    expect(preparingButton.classList.contains('recording')).toBe(false)
+    expect(screen.queryByText('0:00 / 0:30')).toBeNull()
+    expect(screen.queryByText('結束再按一下')).toBeNull()
+    expect(screen.getByRole('button', {
+      name: 'Bicara Bahasa Indonesia，Ketuk untuk mulai',
+    })).toHaveProperty('disabled', true)
+
+    fireEvent.click(preparingButton)
+    expect(recorderMocks.start).toHaveBeenCalledOnce()
+
+    await act(async () => reportStarted?.())
+    expect(await screen.findByRole('button', { name: '說台語，結束再按一下' })).toBeTruthy()
+    expect(screen.getByText('0:00 / 0:30')).toBeTruthy()
+  })
+
+  it('opens the error modal directly from preparing when microphone startup fails', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    let rejectStart: ((error: RecordingError) => void) | undefined
+    recorderMocks.start.mockImplementation(() => new Promise<void>((_resolve, reject) => {
+      rejectStart = reject
+    }))
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    expect(screen.getByRole('button', {
+      name: '說台語，準備中… / Bersiap…',
+    })).toBeTruthy()
+
+    await act(async () => rejectStart?.(new RecordingError('MIC_DENIED')))
+    expect(await screen.findByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByText('請允許麥克風權限後再試')).toBeTruthy()
+  })
+
+  it('automatically stops 29.5 seconds after MediaRecorder reports recording', async () => {
+    vi.useFakeTimers()
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+    await act(async () => Promise.resolve())
+
+    fireEvent.click(screen.getByRole('button', { name: '說台語，按一下開始' }))
+    await act(async () => Promise.resolve())
+    expect(screen.getByRole('button', { name: '說台語，結束再按一下' })).toBeTruthy()
+
+    await act(async () => vi.advanceTimersByTimeAsync(29_500))
+
+    expect(recorderMocks.stop).toHaveBeenCalledOnce()
+    expect(vibrationMocks.vibrateStop).toHaveBeenCalledOnce()
   })
 
   it('stops MediaRecorder before triggering stop vibration', async () => {

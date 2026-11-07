@@ -250,6 +250,13 @@ p {
   animation: recording-button-pulse 1.15s ease-in-out infinite;
 }
 
+.speaker-button.preparing:disabled {
+  opacity: 1;
+  transform: translateY(5px) scale(0.985);
+  background: linear-gradient(145deg, #625751, #433a36);
+  box-shadow: 0 3px 0 rgb(44 25 18 / 13%), 0 7px 15px rgb(44 25 18 / 14%);
+}
+
 .speaker-button.uploading:disabled {
   opacity: 1;
   transform: translateY(6px) scale(0.985);
@@ -295,6 +302,27 @@ p {
 .uploading-prompt {
   max-width: 18em;
   min-height: 2.4em;
+}
+
+.preparing-feedback {
+  display: flex;
+  min-height: 2.4em;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: clamp(1.3rem, 5.2vw, 1.7rem);
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.preparing-spinner {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 4px solid rgb(255 255 255 / 38%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
 }
 
 .speaker-flag {
