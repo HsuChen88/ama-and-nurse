@@ -3,6 +3,7 @@ import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio }
 import { CompletionChime } from './audio/completion-chime'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { vibrateRecordingStart, vibrateRecordingStop } from './audio/vibration'
+import { ErrorDialog } from './components/ErrorDialog'
 import { IndonesiaFlag, TaiwanFlag } from './components/flags'
 import { friendlyError } from './errors'
 import { AudioRecorder, RecordingError } from './recording/recorder'
@@ -45,6 +46,11 @@ function App() {
   const isResultAudioRef = useRef(false)
   const startedAtRef = useRef(0)
   const stoppingRef = useRef(false)
+  const speakerButtonRefs = useRef<Record<Speaker, HTMLButtonElement | null>>({
+    ama: null,
+    caregiver: null,
+  })
+  const lastSpeakerButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const latest = state.conversations[0] ?? null
   const busy = isStarting || ['uploading', 'playing'].includes(state.status)
@@ -93,8 +99,7 @@ function App() {
   }, [playAudio, state.activeSpeaker])
 
   const startRecording = async (speaker: Speaker) => {
-    if (!['idle', 'error'].includes(state.status) || isStarting) return
-    if (state.status === 'error') dispatch({ type: 'DISMISS_ERROR' })
+    if (state.status !== 'idle' || isStarting) return
     setIsStarting(true)
     try {
       vibrateRecordingStart()
@@ -112,6 +117,7 @@ function App() {
   }
 
   const handleSpeaker = (speaker: Speaker) => {
+    lastSpeakerButtonRef.current = speakerButtonRefs.current[speaker]
     if (state.status === 'recording' && state.activeSpeaker === speaker) {
       completionChimeRef.current.prepare()
       const audio = audioRef.current
@@ -124,6 +130,12 @@ function App() {
     }
     completionChimeRef.current.prepare()
     void startRecording(speaker)
+  }
+
+  const dismissError = () => {
+    const focusTarget = lastSpeakerButtonRef.current ?? speakerButtonRefs.current.ama
+    dispatch({ type: 'DISMISS_ERROR' })
+    window.setTimeout(() => focusTarget?.focus(), 0)
   }
 
   const replay = (conversation: Conversation) => {
@@ -256,27 +268,19 @@ function App() {
       />
       <AppHeader />
 
-      {state.status === 'error' && (
-        <section className="notice error-notice" role="alert">
-          <span aria-hidden="true">!</span>
-          <p>{friendlyError(state.errorCode ?? 'UNKNOWN_ERROR')}</p>
-          <button type="button" onClick={() => dispatch({ type: 'DISMISS_ERROR' })}>
-            知道了 / Mengerti
-          </button>
-        </section>
-      )}
-
       <section className="speaker-actions" aria-label="選擇說話者">
         {(['ama', 'caregiver'] as const).map((speaker) => {
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
           const isUploading = state.status === 'uploading' && state.activeSpeaker === speaker
-          const isDisabled = busy || (state.status === 'recording' && !isActive)
+          const isDisabled = busy || state.status === 'error'
+            || (state.status === 'recording' && !isActive)
           const label = SPEAKER_LABELS[speaker]
           return (
             <button
               className={`speaker-button ${speaker} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
               type="button"
               key={speaker}
+              ref={(element) => { speakerButtonRefs.current[speaker] = element }}
               disabled={isDisabled}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
@@ -372,6 +376,12 @@ function App() {
         語音僅用於即時翻譯，本服務不保存錄音<br />
         Suara hanya dipakai untuk terjemahan langsung dan tidak disimpan
       </footer>
+      {state.status === 'error' && (
+        <ErrorDialog
+          message={friendlyError(state.errorCode ?? 'UNKNOWN_ERROR')}
+          onDismiss={dismissError}
+        />
+      )}
     </main>
   )
 }

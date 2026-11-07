@@ -70,9 +70,13 @@ describe('appReducer', () => {
     expect(appReducer(failed, { type: 'DISMISS_ERROR' }).status).toBe('idle')
   })
 
-  it('starts recording directly from an error and clears it', () => {
+  it('requires dismissing an error before recording again', () => {
     const failed = appReducer(initialState, { type: 'FAIL', code: 'NETWORK_ERROR' })
-    const recording = appReducer(failed, { type: 'START_RECORDING', speaker: 'caregiver' })
+    const unchanged = appReducer(failed, { type: 'START_RECORDING', speaker: 'caregiver' })
+    expect(unchanged).toBe(failed)
+
+    const idle = appReducer(failed, { type: 'DISMISS_ERROR' })
+    const recording = appReducer(idle, { type: 'START_RECORDING', speaker: 'caregiver' })
 
     expect(recording.status).toBe('recording')
     expect(recording.activeSpeaker).toBe('caregiver')

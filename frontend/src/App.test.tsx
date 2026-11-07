@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { formatInviteInput } from './App'
+import { RecordingError } from './recording/recorder'
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -208,6 +209,56 @@ describe('device activation UI', () => {
     finishStop?.({ blob: new Blob(['audio']), filename: 'recording.webm' })
     await waitFor(() => expect(chimeMocks.play).toHaveBeenCalledOnce())
     expect(events).toEqual(['recorder-stop', 'track-stop', 'chime-play'])
+  })
+
+  it('shows errors in a modal that ignores backdrop clicks and traps focus', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    recorderMocks.start.mockRejectedValue(new RecordingError('MIC_DENIED'))
+    render(<App />)
+    const amaButton = await screen.findByRole('button', { name: '說台語，按一下開始' })
+
+    fireEvent.click(amaButton)
+
+    const dialog = await screen.findByRole('alertdialog')
+    const dismissButton = screen.getByRole('button', { name: '知道了 / Mengerti' })
+    await waitFor(() => expect(document.activeElement).toBe(dismissButton))
+    expect(amaButton).toHaveProperty('disabled', true)
+
+    const backdrop = dialog.parentElement
+    if (!backdrop) throw new Error('Missing modal backdrop')
+    fireEvent.click(backdrop)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+
+    fireEvent.keyDown(dismissButton, { key: 'Tab' })
+    expect(document.activeElement).toBe(dismissButton)
+  })
+
+  it('dismisses an error with Escape and restores idle focus to the recording button', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    recorderMocks.start.mockRejectedValue(new RecordingError('MIC_DENIED'))
+    render(<App />)
+    const amaButton = await screen.findByRole('button', { name: '說台語，按一下開始' })
+    fireEvent.click(amaButton)
+
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(amaButton))
+    expect(amaButton).toHaveProperty('disabled', false)
+  })
+
+  it('dismisses an error with the single acknowledgement button', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    recorderMocks.start.mockRejectedValue(new RecordingError('MIC_DENIED'))
+    render(<App />)
+    const amaButton = await screen.findByRole('button', { name: '說台語，按一下開始' })
+    fireEvent.click(amaButton)
+
+    fireEvent.click(await screen.findByRole('button', { name: '知道了 / Mengerti' }))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(amaButton).toHaveProperty('disabled', false)
   })
 
   it('replaces the app with activation and enters the main screen after success', async () => {

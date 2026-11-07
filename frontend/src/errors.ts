@@ -14,6 +14,8 @@ const MESSAGES: Record<string, string> = {
   UNKNOWN_ERROR: '發生問題，請再試一次 / Terjadi masalah, coba lagi',
 }
 
+export const FRIENDLY_ERROR_CODES = Object.keys(MESSAGES)
+
 export function friendlyError(code: string): string {
   return MESSAGES[code] ?? MESSAGES.UNKNOWN_ERROR
 }

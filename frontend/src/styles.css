@@ -319,15 +319,6 @@ p {
   50% { transform: scale(0.975); }
 }
 
-.notice {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin-bottom: 15px;
-  border-radius: 22px;
-  padding: 16px;
-}
-
 .loader {
   width: 42px;
   height: 42px;
@@ -339,31 +330,76 @@ p {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.error-notice {
-  flex-wrap: wrap;
-  border: 3px solid #a31f1a;
-  background: #fff0ed;
+.error-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  background: rgb(37 24 19 / 68%);
 }
 
-.error-notice > span {
+.error-dialog {
+  display: flex;
+  width: min(100%, 500px);
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  border: 3px solid #8d241f;
+  border-radius: 28px;
+  padding: clamp(24px, 7vw, 36px) 20px 22px;
+  background: #fffdf7;
+  box-shadow: 0 20px 60px rgb(28 16 12 / 35%);
+  text-align: center;
+}
+
+.error-dialog-icon {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 64px;
+  height: 64px;
   place-items: center;
   border-radius: 50%;
   color: #fff;
   background: #a31f1a;
-  font-size: 1.5rem;
+  font-size: 2.25rem;
   font-weight: 900;
 }
 
-.error-notice p {
-  flex: 1 1 220px;
-  font-size: 1.14rem;
-  font-weight: 750;
+.error-dialog h2 {
+  margin-top: 16px;
+  font-size: clamp(1.55rem, 6.5vw, 2rem);
 }
 
-.error-notice button,
+.error-dialog p {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: #4c332a;
+  font-size: clamp(1.25rem, 5.2vw, 1.55rem);
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.error-dialog button {
+  width: 100%;
+  margin-top: 24px;
+  border: 0;
+  border-radius: 20px;
+  padding: 14px 18px;
+  color: #fff;
+  background: #8f2e25;
+  font-size: clamp(1.25rem, 5.5vw, 1.55rem);
+  font-weight: 900;
+  box-shadow: 0 6px 0 #5e1b16;
+}
+
+.error-dialog button:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #5e1b16;
+}
+
 .section-heading button {
   border: 2px solid #593a2e;
   border-radius: 16px;
