@@ -145,6 +145,26 @@ describe('device activation UI', () => {
     expect(caregiverButton).toHaveProperty('disabled', true)
   })
 
+  it('shows immediate pressed feedback and releases it for every pointer end', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+
+    const amaButton = await screen.findByRole('button', { name: '說台語，按一下開始' })
+
+    fireEvent.pointerDown(amaButton)
+    expect(amaButton.classList.contains('pressed')).toBe(true)
+    fireEvent.pointerUp(amaButton)
+    expect(amaButton.classList.contains('pressed')).toBe(false)
+
+    fireEvent.pointerDown(amaButton)
+    fireEvent.pointerCancel(amaButton)
+    expect(amaButton.classList.contains('pressed')).toBe(false)
+
+    fireEvent.pointerDown(amaButton)
+    fireEvent.pointerLeave(amaButton)
+    expect(amaButton.classList.contains('pressed')).toBe(false)
+  })
+
   it('starts MediaRecorder immediately while triggering start vibration', async () => {
     apiMocks.getSession.mockResolvedValue({ activated: true })
     render(<App />)
@@ -171,12 +191,17 @@ describe('device activation UI', () => {
       name: '說台語，準備中… / Bersiap…',
     })
     expect(preparingButton.classList.contains('preparing')).toBe(true)
+    expect(preparingButton.classList.contains('pressed')).toBe(true)
     expect(preparingButton.classList.contains('recording')).toBe(false)
     expect(screen.queryByText('0:00 / 0:30')).toBeNull()
     expect(screen.queryByText('結束再按一下')).toBeNull()
-    expect(screen.getByRole('button', {
+    const disabledCaregiverButton = screen.getByRole('button', {
       name: 'Bicara Bahasa Indonesia，Ketuk untuk mulai',
-    })).toHaveProperty('disabled', true)
+    })
+    expect(disabledCaregiverButton).toHaveProperty('disabled', true)
+
+    fireEvent.pointerDown(disabledCaregiverButton)
+    expect(disabledCaregiverButton.classList.contains('pressed')).toBe(false)
 
     fireEvent.click(preparingButton)
     expect(recorderMocks.start).toHaveBeenCalledOnce()
@@ -246,6 +271,7 @@ describe('device activation UI', () => {
       name: '說台語，✓ 已結束，翻譯中…',
     })
     expect(uploadingButton.classList.contains('uploading')).toBe(true)
+    expect(uploadingButton.classList.contains('pressed')).toBe(true)
     expect(uploadingButton).toHaveProperty('disabled', true)
     expect(screen.queryByText('翻譯中，請稍等')).toBeNull()
   })

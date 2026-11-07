@@ -36,6 +36,8 @@ const SPEAKER_LABELS: Record<Speaker, {
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState)
   const [inviteCode, setInviteCode] = useState('')
+  const [pressedSpeaker, setPressedSpeaker] = useState<Speaker | null>(null)
+  const [isReplayPressed, setIsReplayPressed] = useState(false)
   const [invalidInvite, setInvalidInvite] = useState(
     () => new URLSearchParams(window.location.search).get('invite') === 'invalid',
   )
@@ -131,6 +133,16 @@ function App() {
       return
     }
     void startRecording(speaker)
+  }
+
+  const pressSpeaker = (speaker: Speaker) => {
+    const canPress = state.status === 'idle'
+      || (state.status === 'recording' && state.activeSpeaker === speaker)
+    if (canPress) setPressedSpeaker(speaker)
+  }
+
+  const releaseSpeaker = (speaker: Speaker) => {
+    setPressedSpeaker((current) => current === speaker ? null : current)
   }
 
   const dismissError = () => {
@@ -274,19 +286,22 @@ function App() {
           const isPreparing = state.status === 'preparing' && state.activeSpeaker === speaker
           const isActive = state.status === 'recording' && state.activeSpeaker === speaker
           const isUploading = state.status === 'uploading' && state.activeSpeaker === speaker
+          const isPressed = isPreparing || isUploading
+            || (pressedSpeaker === speaker && (state.status === 'idle' || isActive))
           const isDisabled = busy || state.status === 'error'
             || (state.status === 'recording' && !isActive)
           const label = SPEAKER_LABELS[speaker]
           return (
             <button
-              className={`speaker-button ${speaker} ${isPreparing ? 'preparing' : ''} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''}`}
+              className={`speaker-button ${speaker} ${isPreparing ? 'preparing' : ''} ${isActive ? 'recording' : ''} ${isUploading ? 'uploading' : ''} ${isPressed ? 'pressed' : ''}`}
               type="button"
               key={speaker}
               ref={(element) => { speakerButtonRefs.current[speaker] = element }}
               disabled={isDisabled}
-              onPointerDown={() => {
-                // A pointer listener lets iOS Safari paint :active immediately; action stays on click.
-              }}
+              onPointerDown={() => pressSpeaker(speaker)}
+              onPointerUp={() => releaseSpeaker(speaker)}
+              onPointerCancel={() => releaseSpeaker(speaker)}
+              onPointerLeave={() => releaseSpeaker(speaker)}
               onClick={() => handleSpeaker(speaker)}
               aria-pressed={isActive}
               aria-busy={isPreparing || isUploading || undefined}
@@ -331,10 +346,19 @@ function App() {
       )}
 
       <button
-        className={`replay-main ${state.autoplayBlocked ? 'needs-attention' : ''}`}
+        className={`replay-main ${state.autoplayBlocked ? 'needs-attention' : ''} ${isReplayPressed ? 'pressed' : ''}`}
         type="button"
         disabled={!latest || state.status !== 'idle'}
-        onClick={() => latest && replay(latest)}
+        onPointerDown={() => {
+          if (latest && state.status === 'idle') setIsReplayPressed(true)
+        }}
+        onPointerUp={() => setIsReplayPressed(false)}
+        onPointerCancel={() => setIsReplayPressed(false)}
+        onPointerLeave={() => setIsReplayPressed(false)}
+        onClick={() => {
+          setIsReplayPressed(false)
+          if (latest) replay(latest)
+        }}
       >
         <span aria-hidden="true">▶</span>
         <span>

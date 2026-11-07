@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 interface ErrorDialogProps {
   message: string
@@ -10,6 +10,7 @@ const DESCRIPTION_ID = 'error-dialog-description'
 
 export function ErrorDialog({ message, onDismiss }: ErrorDialogProps) {
   const dismissButtonRef = useRef<HTMLButtonElement>(null)
+  const [isPressed, setIsPressed] = useState(false)
   const [traditionalChinese, indonesian] = message.split(' / ', 2)
 
   useEffect(() => {
@@ -43,7 +44,16 @@ export function ErrorDialog({ message, onDismiss }: ErrorDialogProps) {
           <span>{traditionalChinese}</span>
           {indonesian && <span lang="id">{indonesian}</span>}
         </p>
-        <button ref={dismissButtonRef} type="button" onClick={onDismiss}>
+        <button
+          ref={dismissButtonRef}
+          className={isPressed ? 'pressed' : ''}
+          type="button"
+          onPointerDown={() => setIsPressed(true)}
+          onPointerUp={() => setIsPressed(false)}
+          onPointerCancel={() => setIsPressed(false)}
+          onPointerLeave={() => setIsPressed(false)}
+          onClick={onDismiss}
+        >
           知道了 / Mengerti
         </button>
       </section>

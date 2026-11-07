@@ -211,6 +211,7 @@ p {
 }
 
 .speaker-button {
+  --button-edge: #5f1b15;
   position: relative;
   display: flex;
   width: 100%;
@@ -227,41 +228,55 @@ p {
   padding: 20px 18px;
   color: #fff;
   white-space: normal;
-  box-shadow: 0 9px 0 rgb(44 25 18 / 17%), 0 14px 28px rgb(44 25 18 / 18%);
-  transition: transform 120ms ease, box-shadow 120ms ease;
-}
-
-.speaker-button:not(:disabled):active {
-  animation: none;
-  transform: translateY(7px) scale(0.975);
-  box-shadow: 0 2px 0 rgb(44 25 18 / 14%), 0 5px 12px rgb(44 25 18 / 14%);
+  box-shadow: 0 10px 0 var(--button-edge), 0 17px 28px rgb(44 25 18 / 20%);
+  filter: brightness(1);
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out,
+    filter 120ms ease-out;
 }
 
 .speaker-button.ama {
+  --button-edge: #641d17;
   background: linear-gradient(145deg, #ba3f31, #8b281f);
 }
 
 .speaker-button.caregiver {
+  --button-edge: #043f45;
   background: linear-gradient(145deg, #08787e, #07565e);
 }
 
 .speaker-button.recording {
+  --button-edge: #68110d;
   background: linear-gradient(145deg, #d52f28, #921810);
+}
+
+.speaker-button.recording:not(.pressed) {
   animation: recording-button-pulse 1.15s ease-in-out infinite;
 }
 
 .speaker-button.preparing:disabled {
+  --button-edge: #2f2926;
   opacity: 1;
-  transform: translateY(5px) scale(0.985);
   background: linear-gradient(145deg, #625751, #433a36);
-  box-shadow: 0 3px 0 rgb(44 25 18 / 13%), 0 7px 15px rgb(44 25 18 / 14%);
 }
 
 .speaker-button.uploading:disabled {
+  --button-edge: #30231f;
   opacity: 1;
-  transform: translateY(6px) scale(0.985);
   background: linear-gradient(145deg, #67534b, #46362f);
-  box-shadow: 0 2px 0 rgb(44 25 18 / 12%), 0 5px 12px rgb(44 25 18 / 13%);
+}
+
+.speaker-button.pressed {
+  animation: none;
+  transform: translateY(8px);
+  box-shadow:
+    0 2px 0 var(--button-edge),
+    inset 0 5px 12px rgb(27 15 10 / 24%),
+    0 6px 12px rgb(44 25 18 / 14%);
+  filter: brightness(0.85);
+  transition-duration: 60ms;
+  transition-timing-function: ease-out;
 }
 
 .speaker-button strong {
@@ -420,12 +435,19 @@ p {
   background: #8f2e25;
   font-size: clamp(1.25rem, 5.5vw, 1.55rem);
   font-weight: 900;
-  box-shadow: 0 6px 0 #5e1b16;
+  box-shadow: 0 8px 0 #5e1b16, 0 13px 20px rgb(49 18 13 / 20%);
+  filter: brightness(1);
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out,
+    filter 120ms ease-out;
 }
 
-.error-dialog button:active {
-  transform: translateY(4px);
-  box-shadow: 0 2px 0 #5e1b16;
+.error-dialog button.pressed {
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 #5e1b16, inset 0 4px 9px rgb(46 12 9 / 24%);
+  filter: brightness(0.85);
+  transition-duration: 60ms;
 }
 
 .section-heading button {
@@ -485,7 +507,20 @@ p {
   padding: 13px 20px;
   color: #fff;
   background: #34221b;
-  box-shadow: 0 7px 0 #1d120e;
+  box-shadow: 0 8px 0 #1d120e, 0 13px 20px rgb(35 20 14 / 20%);
+  filter: brightness(1);
+  transition:
+    transform 120ms ease-out,
+    box-shadow 120ms ease-out,
+    filter 120ms ease-out;
+}
+
+.replay-main.pressed:not(:disabled) {
+  animation: none;
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 #1d120e, inset 0 4px 9px rgb(16 9 6 / 32%);
+  filter: brightness(0.85);
+  transition-duration: 60ms;
 }
 
 .replay-main > span:first-child {
@@ -505,7 +540,7 @@ p {
   font-size: 1rem;
 }
 
-.replay-main.needs-attention:not(:disabled) {
+.replay-main.needs-attention:not(:disabled):not(.pressed) {
   outline: 6px solid #efb329;
   animation: attention 1.4s ease-in-out infinite;
 }
@@ -637,5 +672,24 @@ p {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .speaker-button.pressed,
+  .replay-main.pressed:not(:disabled),
+  .error-dialog button.pressed {
+    transform: none;
+    transition: filter 60ms linear;
+  }
+
+  .speaker-button.pressed {
+    box-shadow: 0 10px 0 var(--button-edge), 0 17px 28px rgb(44 25 18 / 20%);
+  }
+
+  .replay-main.pressed:not(:disabled) {
+    box-shadow: 0 8px 0 #1d120e, 0 13px 20px rgb(35 20 14 / 20%);
+  }
+
+  .error-dialog button.pressed {
+    box-shadow: 0 8px 0 #5e1b16, 0 13px 20px rgb(49 18 13 / 20%);
   }
 }
