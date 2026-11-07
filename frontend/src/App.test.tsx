@@ -250,7 +250,7 @@ describe('device activation UI', () => {
     expect(screen.queryByText('翻譯中，請稍等')).toBeNull()
   })
 
-  it('plays the completion chime only after recording and track shutdown finish', async () => {
+  it('plays the completion chime after track shutdown without waiting for the recording blob', async () => {
     apiMocks.getSession.mockResolvedValue({ activated: true })
     const events: string[] = []
     let finishStop: ((value: { blob: Blob; filename: string }) => void) | undefined
@@ -270,11 +270,10 @@ describe('device activation UI', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
 
-    expect(events).toEqual(['recorder-stop', 'track-stop'])
+    expect(events).toEqual(['recorder-stop', 'track-stop', 'chime-play'])
+    expect(chimeMocks.play).toHaveBeenCalledOnce()
     expect(playerMocks.unlock).toHaveBeenCalledOnce()
     finishStop?.({ blob: new Blob(['audio']), filename: 'recording.webm' })
-    await waitFor(() => expect(chimeMocks.play).toHaveBeenCalledOnce())
-    expect(events).toEqual(['recorder-stop', 'track-stop', 'chime-play'])
   })
 
   it('shows errors in a modal that ignores backdrop clicks and traps focus', async () => {

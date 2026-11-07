@@ -81,8 +81,8 @@ function App() {
       if (!speaker) throw new RecordingError('MIC_UNAVAILABLE')
       const recording = recorderRef.current.stop()
       vibrateRecordingStop()
-      const { blob, filename } = await recording
       void completionChimeRef.current.play()
+      const { blob, filename } = await recording
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
       dispatch({ type: 'UPLOAD_SUCCESS', conversation })
