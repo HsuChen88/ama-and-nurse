@@ -30,7 +30,7 @@
     {
       "binding": "CACHE_DB",
       "database_name": "ama-translator-cache",
-      "database_id": "REPLACE_WITH_CACHE_DB_ID",
+      "database_id": "95c60ce8-5f66-43df-98e6-035de947a3cf",
       "migrations_dir": "migrations"
     }
   ],
