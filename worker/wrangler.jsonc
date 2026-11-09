@@ -26,12 +26,31 @@
       "id": "d238a10a0fc14a77bad394db78ee1268"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "CACHE_DB",
+      "database_name": "ama-translator-cache",
+      "database_id": "95c60ce8-5f66-43df-98e6-035de947a3cf",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AUDIO_BUCKET",
+      "bucket_name": "ama-translator-audio"
+    }
+  ],
   "vars": {
     "INFERENCE_BASE_URL": "https://inference.ama-ama.com",
     "TTS_ID_VOICE": "id-ID-Chirp3-HD-Pulcherrima",
     "TTS_ID_SPEAKING_RATE": "0.9",
     "INFERENCE_TIMEOUT_MS": "30000",
     "INFERENCE_TTS_TIMEOUT_MS": "30000",
-    "GOOGLE_TIMEOUT_MS": "15000"
+    "GOOGLE_TIMEOUT_MS": "15000",
+    "TAIGI_TRANSLATE_TIMEOUT_MS": "5000",
+    "TAIGI_TTS_TIMEOUT_MS": "8000",
+    "TAIGI_TTS_MODEL": "model7",
+    "TAIGI_TTS_VOICE": "normal_f2",
+    "TAIGI_TTS_SPEED": "1.0"
   }
 }

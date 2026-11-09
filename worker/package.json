@@ -11,6 +11,7 @@
     "build": "pnpm --dir ../frontend build && pnpm typecheck",
     "dev": "wrangler dev",
     "deploy": "pnpm build && wrangler deploy",
+    "cache-stats": "tsx scripts/cache-stats.ts",
     "invite": "tsx scripts/invite.ts",
     "test": "vitest run",
     "lint": "eslint .",
