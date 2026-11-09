@@ -1,8 +1,8 @@
 import { ApiError, errorResponse, upstreamError } from './errors'
+import { writeUsage } from './cache'
 import {
   encodeBase64,
   synthesizeIndonesian,
-  synthesizeTaiwanese,
   transcribe,
   translateText,
 } from './providers'
@@ -15,11 +15,12 @@ import {
   serializeDeviceCookie,
 } from './session'
 import { SPEAKERS, type Env, type Speaker } from './types'
+import { synthesizeTaiwanese } from './taigi'
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/api/health' && request.method === 'GET') return healthResponse()
     if (url.pathname === '/api/session' && request.method === 'GET') {
@@ -38,7 +39,7 @@ export default {
       }
       let response: Response
       try {
-        response = await translateResponse(request, env)
+        response = await translateResponse(request, env, ctx)
       } catch (error) {
         if (error instanceof ApiError) response = errorResponse(error)
         else {
@@ -105,7 +106,11 @@ async function joinResponse(pathCode: string, env: Env): Promise<Response> {
   })
 }
 
-async function translateResponse(request: Request, env: Env): Promise<Response> {
+async function translateResponse(
+  request: Request,
+  env: Env,
+  ctx?: ExecutionContext,
+): Promise<Response> {
   const totalStarted = performance.now()
   let form: FormData
   try {
@@ -145,11 +150,31 @@ async function translateResponse(request: Request, env: Env): Promise<Response> 
   const translateMs = elapsedMs(started)
 
   started = performance.now()
-  const synthesized =
-    config.targetLang === 'id'
-      ? await synthesizeIndonesian(translatedText, env)
-      : await synthesizeTaiwanese(translatedText, env)
+  const synthesized = config.targetLang === 'id'
+    ? await synthesizeIndonesian(translatedText, env)
+    : await synthesizeTaiwanese(translatedText, env)
   const ttsMs = elapsedMs(started)
+
+  if (config.targetLang === 'nan-TW' && 'source' in synthesized) {
+    const usage = writeUsage(env.CACHE_DB, {
+      createdAt: new Date().toISOString(),
+      zhText: translatedText,
+      normalizedKey: synthesized.normalizedKey,
+      taigiHan: synthesized.taigiHan,
+      translationHit: synthesized.translationHit,
+      ttsHit: synthesized.ttsHit,
+      source: synthesized.source,
+    }).catch(() => {
+      console.warn('Usage log write failed')
+    })
+    if (ctx) ctx.waitUntil(usage)
+    else void usage
+  }
+
+  const audioUrl =
+    'audioKey' in synthesized && synthesized.audioKey
+      ? `/api/audio/${synthesized.audioKey}`
+      : `data:${synthesized.mime};base64,${encodeBase64(synthesized.bytes!)}`
 
   return Response.json({
     id: crypto.randomUUID(),
@@ -158,7 +183,7 @@ async function translateResponse(request: Request, env: Env): Promise<Response> 
     target_lang: config.targetLang,
     source_text: sourceText,
     translated_text: translatedText,
-    audio_url: `data:${synthesized.mime};base64,${encodeBase64(synthesized.bytes)}`,
+    audio_url: audioUrl,
     audio_mime: synthesized.mime,
     timings_ms: {
       asr: asrMs,
@@ -177,7 +202,8 @@ function healthResponse(): Response {
       asr_id: 'remote',
       translate: 'google',
       tts_id: 'google',
-      tts_nan: 'remote',
+      tts_nan: 'taigi',
+      tts_nan_fallback: 'remote',
     },
   })
 }

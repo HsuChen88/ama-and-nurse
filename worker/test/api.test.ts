@@ -2,23 +2,29 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import worker from '../src/index'
 import { resetGoogleTokenCacheForTests } from '../src/google-auth'
 import { inviteKey, issueDeviceToken } from '../src/session'
+import { resetTaigiPauseForTests } from '../src/taigi'
 import type { Env } from '../src/types'
 import { audioRequest, jsonResponse, makeServiceAccount, makeTestEnv } from './helpers'
 
 let env: Env
 let deviceCookie: string
+let translateServiceAccount = ''
+let ttsServiceAccount = ''
 
 beforeAll(async () => {
   const translateAccount = await makeServiceAccount('translate@example.invalid', 'translate-project')
   const ttsAccount = await makeServiceAccount('tts@example.invalid', 'tts-project')
-  env = makeTestEnv({
-    GOOGLE_TRANSLATE_SA_JSON: translateAccount.json,
-    GOOGLE_TTS_SA_JSON: ttsAccount.json,
-  })
+  translateServiceAccount = translateAccount.json
+  ttsServiceAccount = ttsAccount.json
 })
 
 beforeEach(async () => {
   resetGoogleTokenCacheForTests()
+  resetTaigiPauseForTests()
+  env = makeTestEnv({
+    GOOGLE_TRANSLATE_SA_JSON: translateServiceAccount,
+    GOOGLE_TTS_SA_JSON: ttsServiceAccount,
+  })
   await env.INVITES.put(inviteKey('ABCDEFGH'), '{}')
   deviceCookie = `ama_device=${await issueDeviceToken('ABCDEFGH', env.DEVICE_SIGNING_KEY)}`
 })
@@ -89,7 +95,7 @@ describe('Worker API', () => {
     expect(urls).toHaveLength(5)
   })
 
-  it('uses remote Taiwanese TTS for caregiver while preserving translated text', async () => {
+  it('uses Taigi translation and TTS for caregiver while preserving translated text', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
@@ -99,17 +105,27 @@ describe('Worker API', () => {
           translations: [{ translatedText: '<span translate="no">阿嬤</span>哪裡痛？' }],
         })
       }
-      if (url.includes('/v1/tts')) {
-        const headers = new Headers(init?.headers)
-        expect(headers.get('Authorization')).toBe('Bearer inference-token')
-        expect(headers.get('CF-Access-Client-Id')).toBe('access-client-id')
-        expect(headers.get('CF-Access-Client-Secret')).toBe('access-client-secret')
+      if (url.includes('taigiTransBilling')) {
+        expect(new Headers(init?.headers).get('x-api-key')).toBe('taigi-translate-secret')
         expect(JSON.parse(init?.body as string)).toEqual({
-          text: '阿嬤哪裡痛？',
-          language: 'nan-TW',
+          inputText: '阿嬤哪裡痛?',
+          inputLan: 'zhtw',
+          outputLan: 'tw',
+        })
+        return jsonResponse({ outputText: '阿媽佗位疼?', tokens: 6, taiwaneseInvolved: true })
+      }
+      if (url.includes('taigiStripe')) {
+        expect(new Headers(init?.headers).get('x-api-key')).toBe('taigi-tts-secret')
+        expect(new Headers(init?.headers).get('Idempotency-Key')).toMatch(/^ama-[a-f0-9]{64}$/)
+        expect(JSON.parse(init?.body as string)).toEqual({
+          text: '阿媽佗位疼?',
+          model: 'model7',
+          voice_label: 'normal_f2',
+          speed: 1,
+          user: '',
         })
         return new Response(new Uint8Array([1, 2, 3]), {
-          headers: { 'Content-Type': 'audio/mpeg' },
+          headers: { 'Content-Type': 'audio/wav' },
         })
       }
       throw new Error(`Unexpected URL: ${url}`)
@@ -121,8 +137,8 @@ describe('Worker API', () => {
 
     expect(body.target_lang).toBe('nan-TW')
     expect(body.translated_text).toBe('阿嬤哪裡痛？')
-    expect(body.audio_mime).toBe('audio/mpeg')
-    expect(body.audio_url).toBe('data:audio/mpeg;base64,AQID')
+    expect(body.audio_mime).toBe('audio/wav')
+    expect(body.audio_url).toMatch(/^\/api\/audio\/[a-f0-9]{64}$/)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('texttospeech'))).toBe(false)
   })
 
@@ -273,7 +289,8 @@ describe('Worker API', () => {
         asr_id: 'remote',
         translate: 'google',
         tts_id: 'google',
-        tts_nan: 'remote',
+        tts_nan: 'taigi',
+        tts_nan_fallback: 'remote',
       },
     })
 

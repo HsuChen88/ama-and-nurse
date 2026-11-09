@@ -135,10 +135,14 @@ export async function synthesizeIndonesian(
   }
 }
 
-export async function synthesizeTaiwanese(
+export async function synthesizeTaiwaneseFallback(
   text: string,
   env: Env,
-): Promise<{ bytes: Uint8Array; mime: 'audio/mpeg' | 'audio/wav' }> {
+): Promise<{
+  bytes: Uint8Array
+  mime: 'audio/mpeg' | 'audio/wav'
+  source: 'fallback' | 'chime'
+}> {
   const started = performance.now()
   let response: Response
   try {
@@ -155,7 +159,7 @@ export async function synthesizeTaiwanese(
       status_code: null,
       elapsed_ms: elapsedMs(started),
     })
-    return synthesizePendingTaiwanese()
+    return { ...synthesizePendingTaiwanese(), source: 'chime' }
   }
   const elapsed = elapsedMs(started)
   console.log('Inference TTS request completed', {
@@ -167,20 +171,20 @@ export async function synthesizeTaiwanese(
       status_code: response.status,
       elapsed_ms: elapsed,
     })
-    return synthesizePendingTaiwanese()
+    return { ...synthesizePendingTaiwanese(), source: 'chime' }
   }
   try {
     const contentType = response.headers.get('content-type') ?? ''
     if (!contentType.toLowerCase().startsWith('audio/mpeg')) throw new Error()
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.length === 0) throw new Error()
-    return { bytes, mime: 'audio/mpeg' }
+    return { bytes, mime: 'audio/mpeg', source: 'fallback' }
   } catch {
     console.warn('Inference TTS returned invalid audio; using fallback', {
       status_code: response.status,
       elapsed_ms: elapsedMs(started),
     })
-    return synthesizePendingTaiwanese()
+    return { ...synthesizePendingTaiwanese(), source: 'chime' }
   }
 }
 

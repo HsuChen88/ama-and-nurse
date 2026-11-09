@@ -11,7 +11,16 @@ export interface Env {
   INFERENCE_TTS_TIMEOUT_MS: string
   GOOGLE_TIMEOUT_MS: string
   DEVICE_SIGNING_KEY: string
+  TAIGI_TRANSLATE_API_KEY: string
+  TAIGI_TTS_API_KEY: string
+  TAIGI_TRANSLATE_TIMEOUT_MS: string
+  TAIGI_TTS_TIMEOUT_MS: string
+  TAIGI_TTS_MODEL: string
+  TAIGI_TTS_VOICE: string
+  TAIGI_TTS_SPEED: string
   INVITES: KVNamespace
+  CACHE_DB: D1Database
+  AUDIO_BUCKET: R2Bucket
 }
 
 export type Speaker = 'ama' | 'caregiver'
