@@ -229,7 +229,7 @@ function healthResponse(): Response {
       translate: 'google',
       tts_id: 'google',
       tts_nan: 'taigi',
-      tts_nan_fallback: 'remote',
+      fallback: 'remote',
     },
   })
 }

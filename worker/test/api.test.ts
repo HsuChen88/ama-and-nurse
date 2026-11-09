@@ -4,7 +4,13 @@ import { resetGoogleTokenCacheForTests } from '../src/google-auth'
 import { inviteKey, issueDeviceToken } from '../src/session'
 import { resetTaigiPauseForTests } from '../src/taigi'
 import type { Env } from '../src/types'
-import { audioRequest, jsonResponse, makeServiceAccount, makeTestEnv } from './helpers'
+import {
+  MemoryDatabase,
+  audioRequest,
+  jsonResponse,
+  makeServiceAccount,
+  makeTestEnv,
+} from './helpers'
 
 let env: Env
 let deviceCookie: string
@@ -132,7 +138,14 @@ describe('Worker API', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
+    const pending: Promise<unknown>[] = []
+    const waitUntil = vi.fn((promise: Promise<unknown>) => pending.push(promise))
+    const response = await worker.fetch(
+      audioRequest('caregiver', undefined, deviceCookie),
+      env,
+      { waitUntil } as unknown as ExecutionContext,
+    )
+    await Promise.all(pending)
     const body = (await response.json()) as Record<string, string>
 
     expect(body.target_lang).toBe('nan-TW')
@@ -140,6 +153,16 @@ describe('Worker API', () => {
     expect(body.audio_mime).toBe('audio/wav')
     expect(body.audio_url).toMatch(/^\/api\/audio\/[a-f0-9]{64}$/)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('texttospeech'))).toBe(false)
+    expect(waitUntil).toHaveBeenCalledTimes(1)
+    expect((env.CACHE_DB as unknown as MemoryDatabase).usage[0]).toEqual([
+      expect.any(String),
+      '阿嬤哪裡痛？',
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+      '阿媽佗位疼?',
+      0,
+      0,
+      'taigi',
+    ])
   })
 
   it('falls back to the pending tone when remote Taiwanese TTS fails', async () => {
@@ -290,7 +313,7 @@ describe('Worker API', () => {
         translate: 'google',
         tts_id: 'google',
         tts_nan: 'taigi',
-        tts_nan_fallback: 'remote',
+        fallback: 'remote',
       },
     })
 
