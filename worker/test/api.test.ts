@@ -4,13 +4,7 @@ import { resetGoogleTokenCacheForTests } from '../src/google-auth'
 import { inviteKey, issueDeviceToken } from '../src/session'
 import { resetTaigiPauseForTests } from '../src/taigi'
 import type { Env } from '../src/types'
-import {
-  MemoryDatabase,
-  audioRequest,
-  jsonResponse,
-  makeServiceAccount,
-  makeTestEnv,
-} from './helpers'
+import { audioRequest, jsonResponse, makeServiceAccount, makeTestEnv } from './helpers'
 
 let env: Env
 let deviceCookie: string
@@ -66,14 +60,6 @@ describe('Worker API', () => {
           translations: [{ translatedText: '<span translate="no">Nenek</span> sudah makan?' }],
         })
       }
-      if (url.includes('texttospeech.googleapis.com')) {
-        expect(JSON.parse(init?.body as string)).toEqual({
-          input: { text: 'Nenek sudah makan?' },
-          voice: { languageCode: 'id-ID', name: 'id-ID-Chirp3-HD-Pulcherrima' },
-          audioConfig: { audioEncoding: 'MP3', speakingRate: 0.9 },
-        })
-        return jsonResponse({ audioContent: btoa('mp3-audio') })
-      }
       throw new Error(`Unexpected URL: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -92,17 +78,17 @@ describe('Worker API', () => {
       target_lang: 'id',
       source_text: '阿罵食飽未？',
       translated_text: 'Nenek sudah makan?',
-      audio_mime: 'audio/mpeg',
-      audio_url: `data:audio/mpeg;base64,${btoa('mp3-audio')}`,
     })
+    expect(body.audio_url).toMatch(/^\/api\/speech\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    expect(body).not.toHaveProperty('audio_mime')
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/)
-    expect(Object.keys(body.timings_ms)).toEqual(['asr', 'translate', 'tts', 'total'])
+    expect(Object.keys(body.timings_ms)).toEqual(['asr', 'translate', 'total'])
     expect(Object.values(body.timings_ms).every((value) => typeof value === 'number')).toBe(true)
-    expect(urls).toHaveLength(5)
+    expect(urls).toHaveLength(3)
   })
 
-  it('uses Taigi translation and TTS for caregiver while preserving translated text', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  it('returns caregiver text without calling any TTS provider', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
       if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
@@ -111,130 +97,19 @@ describe('Worker API', () => {
           translations: [{ translatedText: '<span translate="no">阿嬤</span>哪裡痛？' }],
         })
       }
-      if (url.includes('taigiTransBilling')) {
-        expect(new Headers(init?.headers).get('x-api-key')).toBe('taigi-translate-secret')
-        expect(JSON.parse(init?.body as string)).toEqual({
-          inputText: '阿嬤哪裡痛？',
-          inputLan: 'zhtw',
-          outputLan: 'tw',
-        })
-        return jsonResponse({ outputText: '阿媽佗位疼?', tokens: 6, taiwaneseInvolved: true })
-      }
-      if (url.includes('taigiStripe')) {
-        expect(new Headers(init?.headers).get('x-api-key')).toBe('taigi-tts-secret')
-        expect(new Headers(init?.headers).get('Idempotency-Key')).toMatch(/^ama-[a-f0-9]{64}$/)
-        expect(JSON.parse(init?.body as string)).toEqual({
-          text: '阿媽佗位疼?',
-          model: 'model7',
-          voice_label: 'normal_f2',
-          speed: 1,
-          user: '',
-        })
-        return new Response(new Uint8Array([1, 2, 3]), {
-          headers: { 'Content-Type': 'audio/wav' },
-        })
-      }
       throw new Error(`Unexpected URL: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const pending: Promise<unknown>[] = []
-    const waitUntil = vi.fn((promise: Promise<unknown>) => pending.push(promise))
-    const response = await worker.fetch(
-      audioRequest('caregiver', undefined, deviceCookie),
-      env,
-      { waitUntil } as unknown as ExecutionContext,
-    )
-    await Promise.all(pending)
+    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
     const body = (await response.json()) as Record<string, string>
 
     expect(body.target_lang).toBe('nan-TW')
     expect(body.translated_text).toBe('阿嬤哪裡痛？')
-    expect(body.audio_mime).toBe('audio/wav')
-    expect(body.audio_url).toMatch(/^\/api\/audio\/[a-f0-9]{64}$/)
+    expect(body.audio_url).toMatch(/^\/api\/speech\//)
+    expect(body).not.toHaveProperty('audio_mime')
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('texttospeech'))).toBe(false)
-    expect(waitUntil).toHaveBeenCalledTimes(1)
-    expect((env.CACHE_DB as unknown as MemoryDatabase).usage[0]).toEqual([
-      expect.any(String),
-      '阿嬤哪裡痛？',
-      expect.stringMatching(/^[a-f0-9]{64}$/),
-      '阿媽佗位疼?',
-      0,
-      0,
-      'taigi',
-    ])
-  })
-
-  it('falls back to the pending tone when remote Taiwanese TTS fails', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
-      if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
-      if (url.includes('translation.googleapis.com')) {
-        return jsonResponse({ translations: [{ translatedText: '阿嬤哪裡痛？' }] })
-      }
-      if (url.includes('/v1/tts')) {
-        return jsonResponse({ error: { code: 'TTS_BACKEND_ERROR' } }, 502)
-      }
-      throw new Error(`Unexpected URL: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
-    const body = (await response.json()) as Record<string, string>
-
-    expect(response.status).toBe(200)
-    expect(body.translated_text).toBe('阿嬤哪裡痛？')
-    expect(body.audio_mime).toBe('audio/wav')
-    expect(body.audio_url).toMatch(/^data:audio\/wav;base64,UklGR/)
-  })
-
-  it('falls back to the pending tone when remote Taiwanese TTS times out', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes('/v1/asr')) return jsonResponse({ text: 'Nenek sakit di mana?' })
-      if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
-      if (url.includes('translation.googleapis.com')) {
-        return jsonResponse({ translations: [{ translatedText: '阿嬤哪裡痛？' }] })
-      }
-      if (url.includes('/v1/tts')) throw new DOMException('timed out', 'TimeoutError')
-      throw new Error(`Unexpected URL: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const response = await worker.fetch(audioRequest('caregiver', undefined, deviceCookie), env)
-    const body = (await response.json()) as Record<string, string>
-
-    expect(response.status).toBe(200)
-    expect(body.audio_mime).toBe('audio/wav')
-    expect(body.audio_url).toMatch(/^data:audio\/wav;base64,UklGR/)
-  })
-
-  it('retries TTS without speakingRate after INVALID_ARGUMENT', async () => {
-    let ttsCalls = 0
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url.includes('/v1/asr')) return jsonResponse({ text: '你好' })
-      if (url.includes('/token')) return jsonResponse({ access_token: 'token', expires_in: 3600 })
-      if (url.includes('translation.googleapis.com')) {
-        return jsonResponse({ translations: [{ translatedText: 'Halo' }] })
-      }
-      if (url.includes('texttospeech.googleapis.com')) {
-        ttsCalls += 1
-        const body = JSON.parse(init?.body as string) as { audioConfig: Record<string, unknown> }
-        if (ttsCalls === 1) {
-          expect(body.audioConfig.speakingRate).toBe(0.9)
-          return jsonResponse({ error: { status: 'INVALID_ARGUMENT' } }, 400)
-        }
-        expect(body.audioConfig).not.toHaveProperty('speakingRate')
-        return jsonResponse({ audioContent: btoa('mp3') })
-      }
-      throw new Error(`Unexpected URL: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    expect((await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)).status).toBe(200)
-    expect(ttsCalls).toBe(2)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('learn-language'))).toBe(false)
   })
 
   it.each([
