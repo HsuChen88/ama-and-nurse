@@ -93,10 +93,10 @@ token 為 `base64url(JSON payload).base64url(HMAC-SHA256)`，有效期 24 小時
 簽章使用 `DEVICE_SIGNING_KEY`，簽章內容加上 `speech:v1:` domain separation 前綴。
 
 - `lang=id`：Google Cloud TTS，回傳 MP3。
-- `lang=nan-TW`：Taigi AI 與 D1／R2 快取；失敗時依序使用 titan TTS 備援與提示音。
+- `lang=nan-TW`：Taigi AI 與 D1／R2 快取；失敗時改用 titan TTS 備援；兩者皆失敗時回 502 `UPSTREAM_ERROR`（文字已顯示，前端可重試）。
 - 成功回應的 `Content-Type` 依實際格式，並包含
   `Cache-Control: private, max-age=86400`。
-- 台語路徑另包含除錯用 `X-Audio-Source: taigi | fallback | chime`；前端不得依賴。
+- 台語路徑另包含除錯用 `X-Audio-Source: taigi | fallback`；前端不得依賴。
 - 前端必須以 `fetch(audio_url, { credentials: "same-origin" })` 完整取得音檔，再以
   Blob URL 播放，不得直接把 speech URL 設為 `<audio>.src`。
 
@@ -104,7 +104,7 @@ token 為 `base64url(JSON payload).base64url(HMAC-SHA256)`，有效期 24 小時
 | ---------------- | ---- | ---- |
 | `NOT_ACTIVATED`  | 401  | 裝置尚未啟用或授權已失效／撤銷 |
 | `NOT_FOUND`      | 404  | token 格式、簽章或效期無效 |
-| `UPSTREAM_ERROR` | 502  | 語音供應者失敗且無法產生提示音 |
+| `UPSTREAM_ERROR` | 502  | 語音供應者全部失敗（usage_log 記為 `chime`） |
 
 ## `GET /api/audio/{id}`（選配）
 

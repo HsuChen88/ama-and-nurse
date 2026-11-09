@@ -155,7 +155,7 @@ flowchart TD
     Taigi -- "逾時、錯誤、403／429" --> Fallback
     Paused -- 是 --> Fallback["titan /v1/tts<br/>Taigi-Llama + GPT-SoVITS-TW"]
     Fallback -- 成功 --> Inline["回傳音訊 bytes（不寫入快取）<br/>X-Audio-Source = fallback"]
-    Fallback -- 失敗 --> Chime["提示音<br/>X-Audio-Source = chime"]
+    Fallback -- 失敗 --> Chime["回 502 UPSTREAM_ERROR<br/>usage_log 記為 chime<br/>前端提示可按再聽一次重試"]
 ```
 
 照護安全：吃藥、疼痛、跌倒等內容只做翻譯與顯示，系統不做任何自動判斷。
