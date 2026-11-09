@@ -29,6 +29,9 @@ export default {
     if (url.pathname === '/api/activate' && request.method === 'POST') {
       return activateResponse(request, env)
     }
+    if (url.pathname.startsWith('/api/audio/') && request.method === 'GET') {
+      return audioResponse(request, url.pathname.slice('/api/audio/'.length), env)
+    }
     if (url.pathname.startsWith('/join/') && request.method === 'GET') {
       return joinResponse(url.pathname.slice('/join/'.length), env)
     }
@@ -56,6 +59,29 @@ export default {
     }
     return errorResponse(new ApiError('NOT_FOUND', 'Resource was not found', 404))
   },
+}
+
+async function audioResponse(request: Request, audioKey: string, env: Env): Promise<Response> {
+  const session = await authenticateDevice(request, env)
+  if (!session) {
+    return errorResponse(new ApiError('NOT_ACTIVATED', 'Device is not activated', 401))
+  }
+  if (!/^[a-f0-9]{64}$/.test(audioKey)) {
+    return errorResponse(new ApiError('NOT_FOUND', 'Audio was not found', 404))
+  }
+
+  const audio = await env.AUDIO_BUCKET.get(audioKey)
+  if (!audio) return errorResponse(new ApiError('NOT_FOUND', 'Audio was not found', 404))
+
+  const response = new Response(audio.body, {
+    headers: {
+      'Content-Type': audio.httpMetadata?.contentType ?? 'audio/wav',
+      'Cache-Control': 'private, max-age=31536000, immutable',
+    },
+  })
+  const cookie = await refreshedCookie(session, env.DEVICE_SIGNING_KEY)
+  if (cookie) response.headers.set('Set-Cookie', cookie)
+  return response
 }
 
 async function sessionResponse(request: Request, env: Env): Promise<Response> {
