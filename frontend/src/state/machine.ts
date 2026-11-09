@@ -1,6 +1,13 @@
 import type { Conversation, Speaker } from '../types'
 
-export type Status = 'idle' | 'preparing' | 'recording' | 'uploading' | 'playing' | 'error'
+export type Status =
+  | 'idle'
+  | 'preparing'
+  | 'recording'
+  | 'uploading'
+  | 'speech-preparing'
+  | 'playing'
+  | 'error'
 export type ActivationStatus = 'checking' | 'required' | 'activating' | 'activated'
 
 export interface AppState {
@@ -31,6 +38,7 @@ export type AppAction =
   | { type: 'TICK'; seconds: number }
   | { type: 'START_UPLOAD' }
   | { type: 'UPLOAD_SUCCESS'; conversation: Conversation }
+  | { type: 'SPEECH_READY'; id: string; audioBlobUrl: string }
   | { type: 'START_PLAYBACK' }
   | { type: 'PLAYBACK_ENDED' }
   | { type: 'AUTOPLAY_BLOCKED' }
@@ -72,9 +80,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (state.status !== 'uploading') return state
       return {
         ...state,
-        status: 'playing',
+        status: 'speech-preparing',
         activeSpeaker: null,
         conversations: [action.conversation, ...state.conversations].slice(0, 20),
+      }
+    case 'SPEECH_READY':
+      if (state.status !== 'speech-preparing' && state.status !== 'playing') return state
+      return {
+        ...state,
+        status: 'playing',
+        conversations: state.conversations.map((conversation) =>
+          conversation.id === action.id
+            ? { ...conversation, audioBlobUrl: action.audioBlobUrl }
+            : conversation,
+        ),
       }
     case 'START_PLAYBACK':
       if (state.status !== 'idle') return state

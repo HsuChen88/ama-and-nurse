@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
-import { activateDevice, ApiError, getSession, resolveAudioUrl, translateAudio } from './api/client'
+import {
+  activateDevice,
+  ApiError,
+  fetchSpeechAudio,
+  getSession,
+  resolveAudioUrl,
+  translateAudio,
+} from './api/client'
 import { CompletionChime } from './audio/completion-chime'
 import { playOnAudioElement, unlockAudioElement } from './audio/player'
 import { vibrateRecordingStart, vibrateRecordingStop } from './audio/vibration'
@@ -48,6 +55,7 @@ function App() {
   const startedAtRef = useRef(0)
   const startingRef = useRef(false)
   const stoppingRef = useRef(false)
+  const blobUrlsRef = useRef(new Set<string>())
   const speakerButtonRefs = useRef<Record<Speaker, HTMLButtonElement | null>>({
     ama: null,
     caregiver: null,
@@ -55,7 +63,7 @@ function App() {
   const lastSpeakerButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const latest = state.conversations[0] ?? null
-  const busy = ['preparing', 'uploading', 'playing'].includes(state.status)
+  const busy = ['preparing', 'uploading', 'speech-preparing', 'playing'].includes(state.status)
 
   const playAudio = useCallback(async (conversation: Conversation, isAutomatic = false) => {
     const audio = audioRef.current
@@ -66,12 +74,35 @@ function App() {
 
     isResultAudioRef.current = true
     try {
-      await playOnAudioElement(audio, resolveAudioUrl(conversation.audio_url))
+      await playOnAudioElement(
+        audio,
+        conversation.audioBlobUrl ?? resolveAudioUrl(conversation.audio_url),
+      )
     } catch {
       if (isAutomatic) dispatch({ type: 'AUTOPLAY_BLOCKED' })
       else dispatch({ type: 'FAIL', code: 'AUDIO_PLAYBACK_ERROR' })
     }
   }, [])
+
+  const prepareAndPlayAudio = useCallback(async (
+    conversation: Conversation,
+    isAutomatic = false,
+  ) => {
+    try {
+      let playable = conversation
+      if (!conversation.audioBlobUrl) {
+        const audioBlobUrl = await fetchSpeechAudio(conversation.audio_url)
+        blobUrlsRef.current.add(audioBlobUrl)
+        playable = { ...conversation, audioBlobUrl }
+        dispatch({ type: 'SPEECH_READY', id: conversation.id, audioBlobUrl })
+      }
+      await playAudio(playable, isAutomatic)
+    } catch (error) {
+      const code = error instanceof ApiError ? error.code : 'SPEECH_UNAVAILABLE'
+      if (code === 'NOT_ACTIVATED') dispatch({ type: 'NOT_ACTIVATED' })
+      else dispatch({ type: 'FAIL', code: 'SPEECH_UNAVAILABLE' })
+    }
+  }, [playAudio])
 
   const stopRecording = useCallback(async () => {
     if (stoppingRef.current) return
@@ -87,8 +118,13 @@ function App() {
       const { blob, filename } = await recording
       const result = await translateAudio(blob, filename, speaker)
       const conversation: Conversation = { ...result, createdAt: Date.now() }
+      if (state.conversations.length >= 20) {
+        const removed = state.conversations.at(-1)
+        revokeConversationAudio(removed)
+        if (removed?.audioBlobUrl) blobUrlsRef.current.delete(removed.audioBlobUrl)
+      }
       dispatch({ type: 'UPLOAD_SUCCESS', conversation })
-      await playAudio(conversation, true)
+      await prepareAndPlayAudio(conversation, true)
     } catch (error) {
       const code = error instanceof ApiError || error instanceof RecordingError
         ? error.code
@@ -98,7 +134,7 @@ function App() {
     } finally {
       stoppingRef.current = false
     }
-  }, [playAudio, state.activeSpeaker])
+  }, [prepareAndPlayAudio, state.activeSpeaker, state.conversations])
 
   const startRecording = async (speaker: Speaker) => {
     if (state.status !== 'idle' || startingRef.current) return
@@ -154,7 +190,7 @@ function App() {
   const replay = (conversation: Conversation) => {
     if (state.status !== 'idle') return
     dispatch({ type: 'START_PLAYBACK' })
-    void playAudio(conversation)
+    void prepareAndPlayAudio(conversation)
   }
 
   useEffect(() => {
@@ -182,7 +218,17 @@ function App() {
     recorderRef.current.cancel()
     completionChimeRef.current.close()
     audioRef.current?.pause()
+    for (const url of blobUrlsRef.current) URL.revokeObjectURL(url)
+    blobUrlsRef.current.clear()
   }, [])
+
+  const clearHistory = () => {
+    for (const conversation of state.conversations) {
+      revokeConversationAudio(conversation)
+      if (conversation.audioBlobUrl) blobUrlsRef.current.delete(conversation.audioBlobUrl)
+    }
+    dispatch({ type: 'CLEAR_HISTORY' })
+  }
 
   useEffect(() => {
     let active = true
@@ -345,6 +391,12 @@ function App() {
         </section>
       )}
 
+      {state.status === 'speech-preparing' && (
+        <p className="speech-preparing-status" role="status" aria-live="polite">
+          語音準備中…
+        </p>
+      )}
+
       <button
         className={`replay-main ${state.autoplayBlocked ? 'needs-attention' : ''} ${isReplayPressed ? 'pressed' : ''}`}
         type="button"
@@ -373,7 +425,7 @@ function App() {
           <button
             type="button"
             disabled={state.conversations.length === 0 || state.status !== 'idle'}
-            onClick={() => dispatch({ type: 'CLEAR_HISTORY' })}
+            onClick={clearHistory}
           >
             清除 / Hapus
           </button>
@@ -439,6 +491,12 @@ export function formatInviteInput(value: string): string {
 
 function formatTime(seconds: number): string {
   return `0:${seconds.toString().padStart(2, '0')} / 0:30`
+}
+
+function revokeConversationAudio(conversation: Conversation | undefined): void {
+  if (conversation?.audioBlobUrl?.startsWith('blob:')) {
+    URL.revokeObjectURL(conversation.audioBlobUrl)
+  }
 }
 
 export default App

@@ -31,3 +31,4 @@
 | 2026-11-01 | 台語 TTS PoC 結論：GPT-SoVITS-TW 在拼音正確時聲調堪用；瓶頸是「產生正確台語拼音」。Taigi-Llama 的 POJ 與漢字分開生成且聲調不可靠，辭典轉換（taibun）文白異讀錯誤多。線上 LLM（Gemini Flash 3.6、Claude 各級）高品質需推理、延遲 7–12 秒，決定**不採用 LLM**。 |
 | 2026-11-01 | **過渡方案**：看護 → 阿嬤 先上線 Taigi-Llama-2-7B（zh-TW → POJ）+ GPT-SoVITS-TW，部署於 titan 的獨立 `taigi-tts` 容器，經 inference `/v1/tts` 轉接；使用者接受聲調不完全正確。屬家庭內部使用（含 NC 授權模型），等待商用台語服務（Taigi AI 等）回覆後替換。 |
 | 2026-11-10 | 看護 → 阿嬤正式主路徑改採 Taigi AI 商用翻譯 model2 與 TTS v3（先以測試金鑰上線，不設月用量上限）；逾時、錯誤或 403／429 時以 titan 的 Taigi-Llama + GPT-SoVITS-TW 備援，兩者皆失敗才播放提示音。以 D1 快取華語 → 台文翻譯、R2 快取 WAV；華語快取鍵採 NFKC、首尾去白、連續空白壓成一格、全半形標點統一且保留所有標點。使用紀錄只保存時間、華語原文、正規化鍵、台文、兩層命中狀態與來源（taigi／fallback／chime），不保存費用或延遲。 |
+| 2026-11-10 | API 改採兩段式回應：`/api/translate` 完成 ASR 與翻譯後先回傳文字，前端立即顯示，再以 `/api/speech/{token}` 取得語音並自動播放；speech token 是 24 小時有效、具 domain separation 的無狀態 HMAC-SHA256 簽章。 |

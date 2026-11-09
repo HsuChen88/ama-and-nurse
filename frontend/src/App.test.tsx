@@ -7,6 +7,7 @@ const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   activateDevice: vi.fn(),
   translateAudio: vi.fn(),
+  fetchSpeechAudio: vi.fn(),
 }))
 
 const recorderMocks = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ vi.mock('./api/client', async (importOriginal) => {
     getSession: apiMocks.getSession,
     activateDevice: apiMocks.activateDevice,
     translateAudio: apiMocks.translateAudio,
+    fetchSpeechAudio: apiMocks.fetchSpeechAudio,
   }
 })
 
@@ -87,10 +89,10 @@ describe('device activation UI', () => {
       target_lang: 'id',
       source_text: '食飽未？',
       translated_text: 'Sudah makan?',
-      audio_url: '/api/audio/result-1',
-      audio_mime: 'audio/mpeg',
-      timings_ms: { asr: 1, translate: 1, tts: 1, total: 3 },
+      audio_url: '/api/speech/result-token',
+      timings_ms: { asr: 1, translate: 1, total: 2 },
     })
+    apiMocks.fetchSpeechAudio.mockReset().mockResolvedValue('blob:result-1')
     recorderMocks.start.mockReset().mockResolvedValue(undefined)
     recorderMocks.stop.mockReset().mockResolvedValue({
       blob: new Blob(['audio']),
@@ -104,6 +106,10 @@ describe('device activation UI', () => {
     chimeMocks.prepare.mockReset()
     chimeMocks.play.mockReset().mockResolvedValue(undefined)
     chimeMocks.close.mockReset()
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    })
   })
 
   afterEach(() => {
@@ -300,6 +306,82 @@ describe('device activation UI', () => {
     expect(chimeMocks.play).toHaveBeenCalledOnce()
     expect(playerMocks.unlock).toHaveBeenCalledOnce()
     finishStop?.({ blob: new Blob(['audio']), filename: 'recording.webm' })
+  })
+
+  it('shows translated text before delayed speech is ready, then autoplays the Blob URL', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    let finishSpeech: ((url: string) => void) | undefined
+    apiMocks.fetchSpeechAudio.mockImplementation(() => new Promise((resolve) => {
+      finishSpeech = resolve
+    }))
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+
+    expect(await screen.findAllByText('食飽未？')).toHaveLength(2)
+    expect(screen.getAllByText('Sudah makan?')).toHaveLength(2)
+    expect(screen.getByText('語音準備中…')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '說台語，按一下開始' }))
+      .toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Bicara Bahasa Indonesia，Ketuk untuk mulai' }))
+      .toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: /再聽一次/ })).toHaveProperty('disabled', true)
+    expect(playerMocks.play).not.toHaveBeenCalled()
+
+    await act(async () => finishSpeech?.('blob:result-1'))
+
+    await waitFor(() => expect(playerMocks.play).toHaveBeenCalledWith(
+      expect.any(HTMLAudioElement),
+      'blob:result-1',
+    ))
+    expect(apiMocks.fetchSpeechAudio).toHaveBeenCalledWith('/api/speech/result-token')
+  })
+
+  it('replays the stored Blob URL without fetching speech again', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+    await waitFor(() => expect(playerMocks.play).toHaveBeenCalledOnce())
+    fireEvent.ended(document.querySelector('audio') as HTMLAudioElement)
+
+    fireEvent.click(screen.getByRole('button', { name: /再聽一次/ }))
+
+    await waitFor(() => expect(playerMocks.play).toHaveBeenCalledTimes(2))
+    expect(apiMocks.fetchSpeechAudio).toHaveBeenCalledTimes(1)
+    expect(playerMocks.play).toHaveBeenLastCalledWith(
+      expect.any(HTMLAudioElement),
+      'blob:result-1',
+    )
+  })
+
+  it('keeps translated text and shows SPEECH_UNAVAILABLE when speech fetching fails', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    apiMocks.fetchSpeechAudio.mockRejectedValue(new Error('network failed'))
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+
+    expect(await screen.findAllByText('食飽未？')).toHaveLength(2)
+    expect(screen.getAllByText('Sudah makan?')).toHaveLength(2)
+    expect(await screen.findByRole('alertdialog')).toBeTruthy()
+    expect(screen.getByText(
+      '語音暫時無法產生，文字已顯示。可按「再聽一次」重試。',
+    )).toBeTruthy()
+  })
+
+  it('revokes the conversation Blob URL when history is cleared', async () => {
+    apiMocks.getSession.mockResolvedValue({ activated: true })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，按一下開始' }))
+    fireEvent.click(await screen.findByRole('button', { name: '說台語，結束再按一下' }))
+    await waitFor(() => expect(playerMocks.play).toHaveBeenCalledOnce())
+    fireEvent.ended(document.querySelector('audio') as HTMLAudioElement)
+
+    fireEvent.click(screen.getByRole('button', { name: '清除 / Hapus' }))
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:result-1')
+    expect(screen.getByText('還沒有對話 / Belum ada percakapan')).toBeTruthy()
   })
 
   it('shows errors in a modal that ignores backdrop clicks and traps focus', async () => {

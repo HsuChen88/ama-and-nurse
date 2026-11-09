@@ -1,10 +1,12 @@
-# API Contract (v1.2)
+# API Contract (v1.3)
 
 前端與後端唯一的介面約定。任何修改都必須先經技術主管同意。
 
 > v1.1（2026-10-31）：後端改由 Cloudflare Worker 實作。`audio_url` 可以是 `data:` URL（Worker 直接內嵌合成語音）；`GET /api/audio/{id}` 改為選配。前端行為不變。
 
 > v1.2（2026-10-31）：新增裝置啟用（邀請碼）。`/api/translate` 需要已啟用的裝置，否則回 401 `NOT_ACTIVATED`；新增 `/api/session`、`/api/activate` 與 `/join/{code}`。
+
+> v1.3（2026-11-10）：翻譯與語音合成改為兩段式。`/api/translate` 先回傳文字與 `/api/speech/{token}`；前端顯示文字後再取得語音並自動播放。
 
 ## 裝置啟用（邀請碼）
 
@@ -53,11 +55,13 @@
   "target_lang": "id",
   "source_text": "你今天有吃藥無？",
   "translated_text": "Apakah hari ini sudah minum obat?",
-  "audio_url": "data:audio/mpeg;base64,SUQzBAAAAA...",
-  "audio_mime": "audio/mpeg",
-  "timings_ms": { "asr": 820, "translate": 140, "tts": 390, "total": 1400 }
+  "audio_url": "/api/speech/eyJ2IjoxLCJsYW5nIjoiaWQi...signature",
+  "timings_ms": { "asr": 820, "translate": 140, "total": 980 }
 }
 ```
+
+此端點只執行 ASR 與文字翻譯，不等待或呼叫 TTS。`audio_url` 一律為
+`/api/speech/{token}`；回應不含 `audio_mime`，`timings_ms` 也不含 `tts`。
 
 ### 錯誤回應（4xx / 5xx）
 
@@ -73,9 +77,34 @@
 | `AUDIO_TOO_SHORT`  | 422  | < 0.5 秒 |
 | `AUDIO_TOO_LONG`   | 422  | > 30 秒 |
 | `ASR_EMPTY`        | 422  | 辨識不到任何語音 |
-| `UPSTREAM_ERROR`   | 502  | ASR / 翻譯 / TTS 供應者失敗 |
+| `UPSTREAM_ERROR`   | 502  | ASR 或翻譯供應者失敗 |
 
-`audio_url` 可為相對路徑（`/api/audio/{id}`）、絕對 URL 或 `data:` URL；前端一律直接當作 `<audio>` 的 src 使用。
+前端取得此回應後應立即顯示 `source_text` 與 `translated_text`，再另外取得
+`audio_url`。為相容舊版後端，前端仍須接受 `/api/audio/{id}`、絕對 URL 與
+`data:` URL。
+
+## `GET /api/speech/{token}`
+
+取得翻譯結果的合成語音。需要有效的 `ama_device` cookie；回應可能同時換發
+接近到期的裝置 cookie。
+
+token 為 `base64url(JSON payload).base64url(HMAC-SHA256)`，有效期 24 小時；payload
+為 `{ "v": 1, "lang": "id" | "nan-TW", "text": "...", "exp": 1234567890 }`。
+簽章使用 `DEVICE_SIGNING_KEY`，簽章內容加上 `speech:v1:` domain separation 前綴。
+
+- `lang=id`：Google Cloud TTS，回傳 MP3。
+- `lang=nan-TW`：Taigi AI 與 D1／R2 快取；失敗時改用 titan TTS 備援；兩者皆失敗時回 502 `UPSTREAM_ERROR`（文字已顯示，前端可重試）。
+- 成功回應的 `Content-Type` 依實際格式，並包含
+  `Cache-Control: private, max-age=86400`。
+- 台語路徑另包含除錯用 `X-Audio-Source: taigi | fallback`；前端不得依賴。
+- 前端必須以 `fetch(audio_url, { credentials: "same-origin" })` 完整取得音檔，再以
+  Blob URL 播放，不得直接把 speech URL 設為 `<audio>.src`。
+
+| code             | HTTP | 情境 |
+| ---------------- | ---- | ---- |
+| `NOT_ACTIVATED`  | 401  | 裝置尚未啟用或授權已失效／撤銷 |
+| `NOT_FOUND`      | 404  | token 格式、簽章或效期無效 |
+| `UPSTREAM_ERROR` | 502  | 語音供應者全部失敗（usage_log 記為 `chime`） |
 
 ## `GET /api/audio/{id}`（選配）
 

@@ -8,11 +8,9 @@ export interface TranslationResult {
   source_text: string
   translated_text: string
   audio_url: string
-  audio_mime: string
   timings_ms: {
     asr: number
     translate: number
-    tts: number
     total: number
   }
 }
@@ -26,4 +24,5 @@ export interface ApiErrorBody {
 
 export interface Conversation extends TranslationResult {
   createdAt: number
+  audioBlobUrl?: string
 }

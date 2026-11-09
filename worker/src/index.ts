@@ -1,7 +1,5 @@
 import { ApiError, errorResponse, upstreamError } from './errors'
-import { writeUsage } from './cache'
 import {
-  encodeBase64,
   synthesizeIndonesian,
   transcribe,
   translateText,
@@ -16,6 +14,8 @@ import {
 } from './session'
 import { SPEAKERS, type Env, type Speaker } from './types'
 import { synthesizeTaiwanese } from './taigi'
+import { issueSpeechToken, validateSpeechToken } from './speech-token'
+import { writeUsage } from './cache'
 
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024
 
@@ -32,6 +32,14 @@ export default {
     if (url.pathname.startsWith('/api/audio/') && request.method === 'GET') {
       return audioResponse(request, url.pathname.slice('/api/audio/'.length), env)
     }
+    if (url.pathname.startsWith('/api/speech/') && request.method === 'GET') {
+      return authenticatedSpeechResponse(
+        request,
+        url.pathname.slice('/api/speech/'.length),
+        env,
+        ctx,
+      )
+    }
     if (url.pathname.startsWith('/join/') && request.method === 'GET') {
       return joinResponse(url.pathname.slice('/join/'.length), env)
     }
@@ -42,7 +50,7 @@ export default {
       }
       let response: Response
       try {
-        response = await translateResponse(request, env, ctx)
+        response = await translateResponse(request, env)
       } catch (error) {
         if (error instanceof ApiError) response = errorResponse(error)
         else {
@@ -59,6 +67,98 @@ export default {
     }
     return errorResponse(new ApiError('NOT_FOUND', 'Resource was not found', 404))
   },
+}
+
+async function authenticatedSpeechResponse(
+  request: Request,
+  token: string,
+  env: Env,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  const session = await authenticateDevice(request, env)
+  if (!session) {
+    return errorResponse(new ApiError('NOT_ACTIVATED', 'Device is not activated', 401))
+  }
+
+  let response: Response
+  try {
+    response = await speechResponse(token, env, ctx)
+  } catch {
+    response = errorResponse(upstreamError())
+  }
+  const cookie = await refreshedCookie(session, env.DEVICE_SIGNING_KEY)
+  if (cookie) response.headers.set('Set-Cookie', cookie)
+  return response
+}
+
+async function speechResponse(
+  token: string,
+  env: Env,
+  ctx?: ExecutionContext,
+): Promise<Response> {
+  const payload = await validateSpeechToken(token, env.DEVICE_SIGNING_KEY)
+  if (!payload) {
+    return errorResponse(new ApiError('NOT_FOUND', 'Speech request was not found', 404))
+  }
+
+  if (payload.lang === 'id') {
+    const audio = await synthesizeIndonesian(payload.text, env)
+    return binaryAudioResponse(audio.bytes, audio.mime)
+  }
+
+  const audio = await synthesizeTaiwanese(payload.text, env)
+  scheduleUsageLog(payload.text, audio, env, ctx)
+  // The text is already on screen; report failure instead of serving the
+  // placeholder chime so the client can offer a real retry.
+  if (audio.source === 'chime') throw upstreamError()
+  if (audio.source === 'taigi') {
+    const cached = audio.audioKey ? await env.AUDIO_BUCKET.get(audio.audioKey) : null
+    if (!cached) throw upstreamError()
+    return binaryAudioResponse(
+      cached.body,
+      cached.httpMetadata?.contentType ?? 'audio/wav',
+      audio.source,
+    )
+  }
+  if (!audio.bytes) throw upstreamError()
+  return binaryAudioResponse(audio.bytes, audio.mime, audio.source)
+}
+
+function binaryAudioResponse(
+  body: BodyInit | Uint8Array,
+  contentType: string,
+  source?: 'taigi' | 'fallback' | 'chime',
+): Response {
+  const headers = new Headers({
+    'Content-Type': contentType,
+    'Cache-Control': 'private, max-age=86400',
+  })
+  if (source) headers.set('X-Audio-Source', source)
+  const responseBody = body instanceof Uint8Array
+    ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer
+    : body
+  return new Response(responseBody, { headers })
+}
+
+function scheduleUsageLog(
+  chineseText: string,
+  audio: Awaited<ReturnType<typeof synthesizeTaiwanese>>,
+  env: Env,
+  ctx?: ExecutionContext,
+): void {
+  const usage = writeUsage(env.CACHE_DB, {
+    createdAt: new Date().toISOString(),
+    zhText: chineseText,
+    normalizedKey: audio.normalizedKey,
+    taigiHan: audio.taigiHan,
+    translationHit: audio.translationHit,
+    ttsHit: audio.ttsHit,
+    source: audio.source,
+  }).catch(() => {
+    console.warn('Usage log write failed')
+  })
+  if (ctx) ctx.waitUntil(usage)
+  else void usage
 }
 
 async function audioResponse(request: Request, audioKey: string, env: Env): Promise<Response> {
@@ -132,11 +232,7 @@ async function joinResponse(pathCode: string, env: Env): Promise<Response> {
   })
 }
 
-async function translateResponse(
-  request: Request,
-  env: Env,
-  ctx?: ExecutionContext,
-): Promise<Response> {
+async function translateResponse(request: Request, env: Env): Promise<Response> {
   const totalStarted = performance.now()
   let form: FormData
   try {
@@ -175,32 +271,11 @@ async function translateResponse(
   )
   const translateMs = elapsedMs(started)
 
-  started = performance.now()
-  const synthesized = config.targetLang === 'id'
-    ? await synthesizeIndonesian(translatedText, env)
-    : await synthesizeTaiwanese(translatedText, env)
-  const ttsMs = elapsedMs(started)
-
-  if (config.targetLang === 'nan-TW' && 'source' in synthesized) {
-    const usage = writeUsage(env.CACHE_DB, {
-      createdAt: new Date().toISOString(),
-      zhText: translatedText,
-      normalizedKey: synthesized.normalizedKey,
-      taigiHan: synthesized.taigiHan,
-      translationHit: synthesized.translationHit,
-      ttsHit: synthesized.ttsHit,
-      source: synthesized.source,
-    }).catch(() => {
-      console.warn('Usage log write failed')
-    })
-    if (ctx) ctx.waitUntil(usage)
-    else void usage
-  }
-
-  const audioUrl =
-    'audioKey' in synthesized && synthesized.audioKey
-      ? `/api/audio/${synthesized.audioKey}`
-      : `data:${synthesized.mime};base64,${encodeBase64(synthesized.bytes!)}`
+  const speechToken = await issueSpeechToken(
+    config.targetLang,
+    translatedText,
+    env.DEVICE_SIGNING_KEY,
+  )
 
   return Response.json({
     id: crypto.randomUUID(),
@@ -209,12 +284,10 @@ async function translateResponse(
     target_lang: config.targetLang,
     source_text: sourceText,
     translated_text: translatedText,
-    audio_url: audioUrl,
-    audio_mime: synthesized.mime,
+    audio_url: `/api/speech/${speechToken}`,
     timings_ms: {
       asr: asrMs,
       translate: translateMs,
-      tts: ttsMs,
       total: elapsedMs(totalStarted),
     },
   })

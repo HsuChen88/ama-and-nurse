@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { activateDevice, getSession, translateAudio } from './client'
+import { activateDevice, fetchSpeechAudio, getSession, translateAudio } from './client'
 
 describe('translateAudio', () => {
   afterEach(() => {
@@ -76,5 +76,40 @@ describe('translateAudio', () => {
     await expect(
       translateAudio(new Blob(['audio']), 'recording.webm', 'ama'),
     ).rejects.toMatchObject({ code: 'NOT_ACTIVATED' })
+  })
+})
+
+describe('fetchSpeechAudio', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('fetches speech once with same-origin credentials and creates a Blob URL', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:speech-1')
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL }))
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { 'Content-Type': 'audio/wav' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchSpeechAudio('/api/speech/token')).resolves.toBe('blob:speech-1')
+    expect(fetchMock).toHaveBeenCalledWith('/api/speech/token', {
+      credentials: 'same-origin',
+    })
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(createObjectURL.mock.calls[0][0]).toMatchObject({ type: 'audio/wav', size: 3 })
+  })
+
+  it.each([
+    [401, 'NOT_ACTIVATED'],
+    [404, 'NOT_FOUND'],
+    [502, 'UPSTREAM_ERROR'],
+  ])('preserves JSON API errors from status %i', async (status, code) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(
+      { error: { code, message: 'speech failed' } },
+      { status },
+    )))
+
+    await expect(fetchSpeechAudio('/api/speech/token')).rejects.toMatchObject({ code })
   })
 })

@@ -54,6 +54,19 @@ export async function translateAudio(
   return (await response.json()) as TranslationResult
 }
 
+export async function fetchSpeechAudio(audioUrl: string): Promise<string> {
+  if (audioUrl.startsWith('blob:')) return audioUrl
+
+  let response: Response
+  try {
+    response = await fetch(resolveAudioUrl(audioUrl), { credentials: 'same-origin' })
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 'Unable to reach speech service')
+  }
+  await throwApiError(response)
+  return URL.createObjectURL(await response.blob())
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
@@ -92,8 +105,7 @@ async function mockTranslate(speaker: Speaker): Promise<TranslationResult> {
     source_text: isAma ? '你食飽未？' : 'Nenek sudah makan?',
     translated_text: isAma ? 'Apakah kamu sudah makan?' : '阿嬤，妳食飽未？',
     audio_url: createToneUrl(),
-    audio_mime: 'audio/wav',
-    timings_ms: { asr: 300, translate: 180, tts: 240, total: 720 },
+    timings_ms: { asr: 300, translate: 180, total: 480 },
   }
 }
 
