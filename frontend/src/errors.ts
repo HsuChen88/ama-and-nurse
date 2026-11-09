@@ -11,6 +11,7 @@ const MESSAGES: Record<string, string> = {
   INSECURE_CONTEXT: '請使用 HTTPS 安全網址開啟 / Buka melalui alamat HTTPS yang aman',
   NETWORK_ERROR: '網路連線失敗，請稍後再試 / Koneksi gagal, coba lagi nanti',
   AUDIO_PLAYBACK_ERROR: '語音無法播放，請稍後再試 / Audio tidak dapat diputar, coba lagi nanti',
+  SPEECH_UNAVAILABLE: '語音暫時無法產生，文字已顯示。可按「再聽一次」重試。',
   UNKNOWN_ERROR: '發生問題，請再試一次 / Terjadi masalah, coba lagi',
 }
 

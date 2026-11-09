@@ -468,6 +468,14 @@ p {
   box-shadow: 0 8px 22px rgb(69 44 28 / 10%);
 }
 
+.speech-preparing-status {
+  margin: -0.5rem 0 1rem;
+  color: var(--ink-muted);
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .result-label {
   color: #725c51;
   font-size: 0.95rem;

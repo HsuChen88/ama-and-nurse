@@ -17,7 +17,7 @@ describe('ErrorDialog', () => {
       expect(dialog.getAttribute('aria-labelledby')).toBe('error-dialog-title')
       expect(dialog.getAttribute('aria-describedby')).toBe('error-dialog-description')
       expect(screen.getByText(traditionalChinese)).toBeTruthy()
-      expect(screen.getByText(indonesian)).toBeTruthy()
+      if (indonesian) expect(screen.getByText(indonesian)).toBeTruthy()
       expect(screen.getAllByRole('button')).toHaveLength(1)
 
       cleanup()

@@ -9,14 +9,13 @@ const result: Conversation = {
   target_lang: 'id',
   source_text: '食飽未？',
   translated_text: 'Sudah makan?',
-  audio_url: '/api/audio/test-1',
-  audio_mime: 'audio/mpeg',
-  timings_ms: { asr: 1, translate: 1, tts: 1, total: 3 },
+  audio_url: '/api/speech/test-1',
+  timings_ms: { asr: 1, translate: 1, total: 2 },
   createdAt: 1,
 }
 
 describe('appReducer', () => {
-  it('follows preparing → recording → uploading → playing → idle', () => {
+  it('follows preparing → recording → uploading → speech preparation → playing → idle', () => {
     const preparing = appReducer(initialState, { type: 'START_PREPARING', speaker: 'ama' })
     expect(preparing.status).toBe('preparing')
 
@@ -27,9 +26,20 @@ describe('appReducer', () => {
     const uploading = appReducer(recording, { type: 'START_UPLOAD' })
     expect(uploading.status).toBe('uploading')
 
-    const playing = appReducer(uploading, { type: 'UPLOAD_SUCCESS', conversation: result })
+    const speechPreparing = appReducer(uploading, {
+      type: 'UPLOAD_SUCCESS',
+      conversation: result,
+    })
+    expect(speechPreparing.status).toBe('speech-preparing')
+    expect(speechPreparing.conversations).toEqual([result])
+
+    const playing = appReducer(speechPreparing, {
+      type: 'SPEECH_READY',
+      id: result.id,
+      audioBlobUrl: 'blob:result-1',
+    })
     expect(playing.status).toBe('playing')
-    expect(playing.conversations).toEqual([result])
+    expect(playing.conversations[0].audioBlobUrl).toBe('blob:result-1')
 
     const idle = appReducer(playing, { type: 'PLAYBACK_ENDED' })
     expect(idle.status).toBe('idle')
