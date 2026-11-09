@@ -151,7 +151,7 @@ pnpm wrangler d1 migrations apply ama-translator-cache --remote
 ```
 
 `translation_cache` 的 key 是正規化華語的 SHA-256。正規化採保守規則：Unicode
-NFKC、移除首尾空白、連續空白壓成一個空白，並將等價全形／半形標點統一；
+NFKC、移除首尾空白、連續空白壓成一個空白，並將半形標點統一為中文全形（數字中的 `1,000`、`1.5` 不變）；
 不採「移除所有空白」，以免把原本不同的詞界合併，且問號、句號等所有標點均
 保留。R2 key 是台文、model、voice、speed 與 TTS 版本的 SHA-256，內容直接保存
 供應商回傳的 WAV，避免在 Worker 內做高成本轉碼。`GET /api/audio/{key}` 會重新

@@ -114,7 +114,7 @@ describe('Worker API', () => {
       if (url.includes('taigiTransBilling')) {
         expect(new Headers(init?.headers).get('x-api-key')).toBe('taigi-translate-secret')
         expect(JSON.parse(init?.body as string)).toEqual({
-          inputText: '阿嬤哪裡痛?',
+          inputText: '阿嬤哪裡痛？',
           inputLan: 'zhtw',
           outputLan: 'tw',
         })

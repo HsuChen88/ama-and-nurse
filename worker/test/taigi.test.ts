@@ -24,13 +24,17 @@ afterEach(() => vi.restoreAllMocks())
 describe('Taigi cache normalization', () => {
   it('normalizes NFKC, whitespace, and punctuation without removing punctuation', () => {
     expect(normalizeChinese('  ＡＢＣ\t  你好？！。　、保留，；  ')).toBe(
-      'ABC 你好?!. ,保留,;',
+      'ABC 你好？！。、保留，；',
     )
   })
 
+  it('unifies half-width punctuation but keeps numbers intact', () => {
+    expect(normalizeChinese('吃藥了嗎?好,1,000元 1.5顆.')).toBe('吃藥了嗎？好，1,000元 1.5顆。')
+  })
+
   it('keeps semantically meaningful question marks and periods in cache keys', async () => {
-    expect(normalizeChinese('你要吃飯了嗎？')).toBe('你要吃飯了嗎?')
-    expect(normalizeChinese('你要吃飯了嗎。')).toBe('你要吃飯了嗎.')
+    expect(normalizeChinese('你要吃飯了嗎？')).toBe('你要吃飯了嗎？')
+    expect(normalizeChinese('你要吃飯了嗎。')).toBe('你要吃飯了嗎。')
     expect(await translationCacheKey(normalizeChinese('你要吃飯了嗎？'))).not.toBe(
       await translationCacheKey(normalizeChinese('你要吃飯了嗎')),
     )
@@ -123,7 +127,7 @@ describe('Taigi service and cache', () => {
     expect(result).toMatchObject({ source: 'taigi', translationHit: false, ttsHit: false })
     expect(database.translations.size).toBe(1)
     expect([...database.translations.values()][0]).toMatchObject({
-      normalized_zh: '阿嬤 好嗎?',
+      normalized_zh: '阿嬤 好嗎？',
       taigi_han: '阿媽敢好?',
       provider_version: TAIGI_TRANSLATE_VERSION,
     })

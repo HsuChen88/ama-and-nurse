@@ -19,17 +19,25 @@ export interface UsageRecord {
   source: 'taigi' | 'fallback' | 'chime'
 }
 
-const PUNCTUATION_EQUIVALENTS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/。/gu, '.'],
-  [/、/gu, ','],
-]
+// NFKC folds full-width punctuation to ASCII; fold it back to the full-width
+// forms natural Chinese uses so the Taigi API receives ordinary text. Every
+// punctuation mark is kept (a trailing question mark changes the meaning).
+const FULL_WIDTH_PUNCTUATION: Readonly<Record<string, string>> = {
+  '?': '？',
+  '!': '！',
+  ',': '，',
+  ';': '；',
+  ':': '：',
+  '.': '。',
+}
 
 export function normalizeChinese(text: string): string {
-  let normalized = text.normalize('NFKC').trim().replace(/\s+/gu, ' ')
-  for (const [pattern, replacement] of PUNCTUATION_EQUIVALENTS) {
-    normalized = normalized.replace(pattern, replacement)
-  }
-  return normalized
+  return text
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .replace(/(?<!\d)[?!,;:.]|[?!,;:.](?!\d)/gu, (mark) => FULL_WIDTH_PUNCTUATION[mark] ?? mark)
+    .replace(/ ?([，。？！；：、]) ?/gu, '$1')
 }
 
 export async function sha256Hex(value: string): Promise<string> {
