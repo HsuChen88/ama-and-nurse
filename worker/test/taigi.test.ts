@@ -134,6 +134,7 @@ describe('Taigi service and cache', () => {
     ['translation error', 'translate-error'],
     ['translation timeout', 'translate-timeout'],
     ['TTS JSON error', 'tts-error'],
+    ['TTS timeout', 'tts-timeout'],
   ])('uses inference fallback for %s and never caches fallback audio', async (_name, mode) => {
     const database = new MemoryDatabase()
     const bucket = new MemoryAudioBucket()
@@ -145,6 +146,7 @@ describe('Taigi service and cache', () => {
         return jsonResponse({ outputText: '阿媽敢好?' })
       }
       if (url.includes('taigiStripe')) {
+        if (mode === 'tts-timeout') throw new DOMException('timed out', 'TimeoutError')
         return jsonResponse({ error: 'silent audio' })
       }
       if (url.includes('/v1/tts')) {
@@ -166,7 +168,7 @@ describe('Taigi service and cache', () => {
 
     expect(result).toMatchObject({ source: 'fallback', mime: 'audio/mpeg' })
     expect(bucket.values.size).toBe(0)
-    if (mode !== 'tts-error') expect(database.translations.size).toBe(0)
+    expect(database.translations.size).toBe(mode.startsWith('translate-') ? 0 : 1)
   })
 
   it.each([403, 429])('pauses Taigi for 30 minutes after status %i', async (status) => {

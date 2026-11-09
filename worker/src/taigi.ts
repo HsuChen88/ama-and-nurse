@@ -76,7 +76,6 @@ export async function synthesizeTaiwanese(
     const audio = await synthesizeWithTaigi(taigiHan, key, model, voice, speed, env)
     await env.AUDIO_BUCKET.put(key, audio, {
       httpMetadata: { contentType: 'audio/wav' },
-      customMetadata: { provider: 'taigi-tts-v3' },
     })
     return {
       source: 'taigi',

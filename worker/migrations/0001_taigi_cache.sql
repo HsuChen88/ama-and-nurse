@@ -7,7 +7,6 @@ CREATE TABLE translation_cache (
 );
 
 CREATE TABLE usage_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL,
   zh_text TEXT NOT NULL,
   normalized_key TEXT NOT NULL,
