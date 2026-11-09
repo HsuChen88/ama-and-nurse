@@ -166,6 +166,21 @@ describe('GET /api/speech/:token', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([7, 8]))
     expect(bucket.values.size).toBe(0)
   })
+
+  it('returns UPSTREAM_ERROR instead of a chime when Taigi and titan both fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('taigiTransBilling')) return jsonResponse({ error: 'unavailable' }, 500)
+      if (url.includes('/v1/tts')) return jsonResponse({ error: 'unavailable' }, 503)
+      throw new Error(`Unexpected URL: ${url}`)
+    }))
+    const token = await issueSpeechToken('nan-TW', '阿嬤好嗎？', env.DEVICE_SIGNING_KEY)
+
+    const response = await worker.fetch(speechRequest(token, deviceCookie), env)
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } })
+  })
 })
 
 function speechRequest(token: string, cookie?: string): Request {

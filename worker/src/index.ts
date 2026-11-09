@@ -108,6 +108,9 @@ async function speechResponse(
 
   const audio = await synthesizeTaiwanese(payload.text, env)
   scheduleUsageLog(payload.text, audio, env, ctx)
+  // The text is already on screen; report failure instead of serving the
+  // placeholder chime so the client can offer a real retry.
+  if (audio.source === 'chime') throw upstreamError()
   if (audio.source === 'taigi') {
     const cached = audio.audioKey ? await env.AUDIO_BUCKET.get(audio.audioKey) : null
     if (!cached) throw upstreamError()
