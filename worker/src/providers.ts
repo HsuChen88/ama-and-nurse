@@ -9,6 +9,11 @@ const FORWARDED_INFERENCE_ERRORS = new Set([
   'AUDIO_TOO_LONG',
   'INVALID_AUDIO',
 ])
+const ASR_BUSY_RETRY_DELAYS_MS = [500, 1000]
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export async function transcribe(
   audio: File,
@@ -22,23 +27,32 @@ export async function transcribe(
 
   const started = performance.now()
   let response: Response
-  try {
-    response = await fetch(`${env.INFERENCE_BASE_URL.replace(/\/$/, '')}/v1/asr`, {
-      method: 'POST',
-      headers,
-      body: form,
-      signal: AbortSignal.timeout(numberSetting(env.INFERENCE_TIMEOUT_MS, 30_000)),
+  let code: string | undefined
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(`${env.INFERENCE_BASE_URL.replace(/\/$/, '')}/v1/asr`, {
+        method: 'POST',
+        headers,
+        body: form,
+        signal: AbortSignal.timeout(numberSetting(env.INFERENCE_TIMEOUT_MS, 30_000)),
+      })
+    } catch {
+      console.warn('Inference ASR request failed', { elapsed_ms: elapsedMs(started) })
+      throw upstreamError()
+    }
+    console.log('Inference ASR request completed', {
+      status_code: response.status,
+      elapsed_ms: elapsedMs(started),
+      attempt,
     })
-  } catch {
-    console.warn('Inference ASR request failed', { elapsed_ms: elapsedMs(started) })
-    throw upstreamError()
+    if (response.ok) break
+    code = await responseErrorCode(response)
+    // BUSY means the GPU queue was momentarily full; each sentence holds the GPU for
+    // well under a second, so a short wait usually finds a free slot.
+    if (code !== 'BUSY' || attempt >= ASR_BUSY_RETRY_DELAYS_MS.length) break
+    await sleep(ASR_BUSY_RETRY_DELAYS_MS[attempt])
   }
-  console.log('Inference ASR request completed', {
-    status_code: response.status,
-    elapsed_ms: elapsedMs(started),
-  })
   if (!response.ok) {
-    const code = await responseErrorCode(response)
     if (code && FORWARDED_INFERENCE_ERRORS.has(code)) {
       throw new ApiError(code, inferenceErrorMessage(code), 422)
     }
