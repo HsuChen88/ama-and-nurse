@@ -127,14 +127,47 @@ describe('Worker API', () => {
     expect(await response.json()).toMatchObject({ error: { code: apiCode } })
   })
 
-  it.each(['MODEL_ERROR', 'BUSY', 'UNAUTHORIZED'])('maps inference %s to UPSTREAM_ERROR', async (code) => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(jsonResponse({ error: { code } }, code === 'BUSY' ? 503 : 500)),
-    )
+  it.each(['MODEL_ERROR', 'UNAUTHORIZED'])('maps inference %s to UPSTREAM_ERROR', async (code) => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: { code } }, 500))
+    vi.stubGlobal('fetch', fetchMock)
     const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
     expect(response.status).toBe(502)
     expect(await response.json()).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries ASR while inference is BUSY and succeeds once a slot frees up', async () => {
+    let asrCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.endsWith('/v1/asr')) {
+        asrCalls += 1
+        return asrCalls === 1
+          ? jsonResponse({ error: { code: 'BUSY' } }, 503)
+          : jsonResponse({ text: '阿罵食飽未？' })
+      }
+      if (url === 'https://oauth2.googleapis.com/token') {
+        return jsonResponse({ access_token: 'token', expires_in: 3600 })
+      }
+      if (url.includes('translation.googleapis.com')) {
+        return jsonResponse({ translations: [{ translatedText: 'Nenek sudah makan?' }] })
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    }))
+
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
+
+    expect(response.status).toBe(200)
+    expect(asrCalls).toBe(2)
+  })
+
+  it('gives up with UPSTREAM_ERROR after the BUSY retries are exhausted', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: { code: 'BUSY' } }, 503))
+    vi.stubGlobal('fetch', fetchMock)
+    const response = await worker.fetch(audioRequest('ama', undefined, deviceCookie), env)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('maps an inference connection failure to UPSTREAM_ERROR', async () => {
